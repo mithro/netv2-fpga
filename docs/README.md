@@ -19,7 +19,7 @@ control, testing on real hardware.
 | Run on latest Raspberry Pi OS (trixie) on Pi 3B+ and Pi 5 | Pi 5 (trixie) is the working host for JTAG/UART/PCIe/Ethernet; Pi 3B+ trixie via the netboot nodes is pending access | Pi 5 trixie exercised throughout |
 | PCIe endpoint | **Gateware done** — `netv2/targets/pcie.py`, x1 Gen2, `10ee:7021`, datapath timing closed | Loads + boots on rpi5; **enumeration blocked at the physical PCIe wiring** (needs a person; see phase-6 report) |
 | HDMI audio de-embed | **Done in sim** — `netv2/gateware/video/audio/`, bit-exact PCM recovery | Functional test needs the rpi3 golden capture rig (pending go-ahead) |
-| HDMI audio embed | Not yet — needs the litevideo output-pipeline port | — |
+| HDMI audio embed | **Done in sim** — `netv2/gateware/video/output/` + `audio/embed.py`; embed->de-embed round-trip recovers audio bit-exact; 720p closes timing (1080p gated by the 742.5 MHz OSERDES -2 datasheet limit) | Needs an HDMI sink/analyser or the golden rig + go-ahead |
 | Ethernet control | **Done** — `netv2/targets/ethernet.py`, hardware Etherbone + CPU MAC | **Pass** — rpi5, KSZ8081 link up 100M FD, Etherbone CSR read/write over the NeTV2 RJ45 |
 | Open-source toolchain (openXC7) | In progress | — |
 | HDMI input pipeline (foundation for audio) | **Done** — litevideo input ported to modern LiteX, builds (setup/hold met at 1080p60; ISERDES is a -2 datasheet limit at 742.5 MHz, clean at 720p) | — |
