@@ -19,6 +19,8 @@ The NeTV2 ships in two variants:
 | Base | XC7A35T-FGG484-2 | 33,280 | `0x0362D093` |
 | Upgraded | XC7A100T-FGG484-2 | 101,440 | `0x03631093` |
 
+The IDCODEs above are the nominal values. The top nibble (bits 31:28) is the **silicon revision**, not part of the part identity: the 100T on `rpi5-netv2` actually reads `0x13631093`, revision 1. Any comparison must mask that nibble off (`idcode & 0x0FFFFFFF`) — but only that nibble, because XC7A50T is `0x0362C093`, a single nibble away from the 35T. See `Host.idcode_matches()` in `tests/hardware/hosts.py`.
+
 Both have 512 MB DDR3-800 RAM, 8 MB SPI NOR flash, 100Base-T Ethernet (FPGA-attached), 2x HDMI in, 2x HDMI out, USB, and PCIe x1.
 
 ### JTAG Wiring
@@ -86,10 +88,12 @@ cat /sys/module/pcie_aspm/parameters/policy
 # Set to performance (non-persistent):
 echo performance | sudo tee /sys/module/pcie_aspm/parameters/policy
 
-# Make persistent across reboots — add to kernel command line:
+# Make persistent across reboots — Pi 5 only (rpi5-netv2) — add to kernel command line:
 # Edit /boot/firmware/cmdline.txt and append:
 #   pcie_aspm.policy=performance
 ```
+
+The `cmdline.txt` edit is **Pi 5 only (`rpi5-netv2`)**: it needs a reboot to take effect, and the golden unit `rpi3-netv2` is never rebooted (`tests/hardware/hosts.py`). ASPM is an RP1/PCIe concern that does not apply to the Pi 3 anyway.
 
 ### Sysfs GPIO Base Offset
 
@@ -207,6 +211,8 @@ wget -O ~/netv2/user-35.bit \
 ```
 
 ### Program SPI Flash (Persistent)
+
+> **Never run this on rpi3-netv2.** That unit is the untouched 2018 reference; only volatile JTAG loads are allowed there (`tests/hardware/hosts.py`). This section is for `rpi5-netv2` and other expendable boards.
 
 Writes a bitstream to the 8 MB SPI NOR flash through JTAG. The FPGA loads from flash on power-up, so this survives power cycles.
 
