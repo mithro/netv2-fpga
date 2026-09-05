@@ -176,3 +176,105 @@ protected commercial content, is a different activity — generating protection,
 Intel signalled it would invoke the DMCA against uses of the leaked key (Techdirt, 2010-09-20),
 and the HDCP Adopter Agreement / robustness rules and any key-material licensing are separate
 considerations. For real legal exposure, consult qualified counsel.
+
+## Silicon — the BCM2835 HDMI/HDCP block (source archaeology)
+
+**The HDMI TX is Broadcom-native VideoCore IP, not Synopsys DesignWare.** The mainline `vc4`
+driver drives BCM2835/2711/2712 with Broadcom-named registers; there is no `dw-hdmi` bridge in
+the path (this corrects an earlier working assumption that Pi 4 / BCM2711 used DesignWare — it
+does not; it is the `vc4` "VC5" variant). DT (`raspberrypi/linux` `bcm2835-common.dtsi`):
+```
+hdmi: hdmi@7e902000 {
+    compatible = "brcm,bcm2835-hdmi";
+    reg = <0x7e902000 0x600>,   // HDMI core   (Linux maps only 0x600)
+          <0x7e808000 0x100>;   // HD / "hdmi mailbox" block
+    clocks = <&clocks BCM2835_PLLH_PIX>, <&clocks BCM2835_CLOCK_HSM>;
+    clock-names = "pixel", "hdmi";
+};
+```
+
+**A separate, unmapped "hdcp" block exists.** Herman Hermitage's reverse-engineered VideoCore
+MMIO map lists, at the bus level:
+- `0x7E808000` — **hdmi mailbox** (mapped by vc4 as the "HD" block)
+- `0x7E809000` — **hdcp mailbox** ← *not* in the DT `reg` list; **Linux never maps it**
+- `0x7E902000` — HDMI core (mapped, 0x600)
+
+So the HDCP engine most likely lives at ~`0x7E809000`, in a window the Linux/vc4 stack never
+touches. The map gives only the block *label* — **no register offsets, no key-RAM layout**.
+(Source: hermanhermitage/videocoreiv wiki, MMIO register map.)
+
+**The register-level HDCP layout is not public.** The "BCM2835 ARM Peripherals" datasheet
+explicitly omits HDMI — §1.1: *"There are a number of peripherals … intended to be controlled
+by the GPU. These are omitted from this datasheet. Accessing these peripherals from the ARM is
+not recommended."* HDMI is a GPU-controlled peripheral. The comparable open Broadcom trees
+(STB `stblinux` bcm7xxx, mobile Capri/Hawaii BSPs) do **not** expose this IP's HDCP registers —
+Broadcom STB HDCP lives in the closed **Nexus/Magnum** stack (`BCHP_HDMI_*`/`BHDM_HDCP_*`
+defines, not open source). No public register dump of the VideoCore HDCP engine (offsets, key
+RAM, An/Aksv/Bksv/Ri, cipher-enable) was found.
+
+## Firmware/VPU — the actual (and only public) key path
+
+**The BCM2835 HDCP cipher is real and has a software key-download interface — through the VPU
+firmware, not the ARM.** Broadcom's *public* userland exposes it. Verified verbatim from
+`raspberrypi/userland` master:
+
+`interface/vmcs_host/vc_hdmi.h`:
+```c
+typedef enum { HDMI_CP_NONE = 0, HDMI_CP_HDCP = 1 } HDMI_CP_MODE_T;   // HDCP 1.x
+#define HDCP_KEY_BLOCK_SIZE 328   /* KSV, padding, device keys and hash. */
+#define HDCP_KSV_LENGTH     5
+#define HDCP_MAX_DEVICE     127
+#define HDCP_MAX_DEPTH      7
+// VC_HDMI_NOTIFY_T status flags:
+VC_HDMI_HDCP_UNAUTH       = (1<<4),  // auth broken (e.g. Ri mismatch) / not active
+VC_HDMI_HDCP_AUTH         = (1<<5),  // HDCP active
+VC_HDMI_HDCP_KEY_DOWNLOAD = (1<<6),  // key download ok/fail
+VC_HDMI_HDCP_SRM_DOWNLOAD = (1<<7),  // revocation-list download ok/fail
+```
+`interface/vmcs_host/vc_vchi_tvservice.c`:
+```c
+int vc_tv_hdmi_set_hdcp_key_id(uint32_t display_id, const uint8_t *key) {
+   TV_HDCP_SET_KEY_PARAM_T param;
+   memcpy(param.key, key, HDCP_KEY_BLOCK_SIZE);          // 328 bytes = KSV + 40 keys + hash
+   return tvservice_send_command(VC_TV_HDCP_SET_KEY, display_id, &param, sizeof(param), 0);
+}
+int vc_tv_hdmi_set_hdcp_revoked_list_id(uint32_t display_id, const uint8_t *list, uint32_t num_keys){
+   TV_HDCP_SET_SRM_PARAM_T param = {VC_HTOV32(num_keys)};
+   int r = tvservice_send_command(VC_TV_HDCP_SET_SRM, display_id, &param, sizeof(param), 0);
+   if (r==0 && num_keys && list) r = vchi_bulk_queue_transmit(..., list, num_keys*HDCP_KSV_LENGTH, ...);
+   return r;
+}
+```
+
+**What this means:**
+- Keys *can* be supplied from software — as a **328-byte block** (KSV + 40 device keys + hash),
+  handed to the **VPU firmware** via the `tvservice` VCHI command `VC_TV_HDCP_SET_KEY`. The VPU,
+  not the ARM, writes them into the HDCP engine's key RAM. There is **no ARM MMIO register write
+  in any public source** that loads HDCP keys directly.
+- Note the 328-byte block already includes a **hash** — the firmware likely validates the key
+  block's integrity (and may additionally gate on an OTP "HDCP enabled" fuse). RPi engineers
+  state the key is "normally programmed into the OTP" and that production Pi firmware ships with
+  **HDCP disabled and no valid key**.
+
+### Firmware-as-gatekeeper (your hypothesis — assessed)
+- **Documented HDMI registers:** ARM/vc4 has *direct* MMIO (ioremap + `HDMI_READ/WRITE`, no
+  mailbox) for the mapped 0x600 core + 0x100 HD windows. For those, the ARM is bus master.
+- **HSM clock:** `BCM2835_CLOCK_HSM` comes from the ARM-side clock manager (`clk-bcm2835`), so
+  the ARM *can* enable/set it without firmware — CONFIRMED from the DT `clocks` property.
+- **HDCP engine:** *not* in the mapped windows (it's the unmapped ~`0x7E809000` block), and the
+  only public control path is the VPU-mediated VCHI command. So HDCP specifically **is
+  firmware-gated in practice.**
+- **OTP/secure key path:** likely VPU-only. rpi-open-firmware documents OTP codec-licence keys
+  but **no** HDCP key region; no public source shows the ARM writing HDCP key RAM. The
+  `set_hdcp_key_id` design (ARM ships bytes → VPU loads engine) is consistent with the VPU owning
+  the key path.
+- **Would firmware modification be required?** Two-sided:
+  - *Maybe not a rewrite:* the closed firmware **already contains** HDCP 1.x (`VC_TV_HDCP_SET_KEY`,
+    auth, SRM, Ri), and the HSM clock + core regs are ARM-reachable. In principle the stock
+    firmware could drive HDCP if fed valid keys.
+  - *But firmware involvement is unavoidable:* a *pure ARM/vc4 driver patch* has **no documented
+    HDCP registers to program** (the ~0x7E809000 block is undocumented and unmapped) — so the
+    realistic path runs **through the VPU firmware**. Whether stock firmware will accept an
+    externally-supplied key without an OTP enable is **UNKNOWN/untested**. If it refuses, you'd
+    need to patch/replace `start.elf` to ungate it (precedent exists: the H.264/MPEG-2
+    codec-licence `start.elf` path), but **no HDCP-enable firmware patch is known publicly.**
