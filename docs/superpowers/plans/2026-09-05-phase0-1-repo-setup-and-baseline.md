@@ -591,6 +591,17 @@ git commit -m "docs: generate the frozen REPL contract from the suite's console 
 
 ### Task 8: Hardware host table and golden-unit guard
 
+> **Superseded (2026-09-05).** The code below is the pre-review version and was
+> implemented as written, then rewritten after the phase 0 hardware-safety review:
+> the guard is now an allowlist (`ALLOWED_ON_GOLDEN`), IDCODEs are compared with
+> the revision nibble masked (`Host.idcode_matches`), hosts are resolved through
+> `resolve_host` (name, fqdn, `user@fqdn`, both domains), `console_command`
+> requires its command line and is filtered by `check_repl_command_allowed`
+> (refuses `reboot`, `mw`, `mc` and any CR/LF), and `rootfs_write` exists and
+> is refused on the golden unit. **The committed `tests/hardware/hosts.py` and
+> `tests/hardware/test_hosts.py` are authoritative; do not re-implement from
+> this block.**
+
 **Files:**
 - Create: `tests/hardware/__init__.py`, `tests/hardware/hosts.py`, `tests/hardware/test_hosts.py`
 
@@ -823,7 +834,7 @@ git commit -m "docs(original): Pi-side software and factory test stack"
 
 ### Task 13: Baseline suite run on the golden unit
 
-Read-only on the golden unit apart from the suite's own behaviour (it stops and restarts MagicMirror and lightdm for the run, as it always has). Allowed actions: `run_suite`, `console_read`. The guard in `tests/hardware/hosts.py` is advisory in phase 1: these steps are manual ssh commands; they are listed here so the reviewer can check them against `ALLOWED_ON_GOLDEN`.
+Read-only on the golden unit apart from the suite's own behaviour (it stops and restarts MagicMirror and lightdm for the run, as it always has). Actions used: `run_suite` (which itself covers `console_command` lines and `service_restart` of `pm2 mm` and `lightdm`). The guard in `tests/hardware/hosts.py` is advisory in phase 1: these steps are manual ssh commands; they are listed here so the reviewer can check them against `ALLOWED_ON_GOLDEN`.
 
 - [ ] **Step 1: Confirm the on-device suite is the committed one**
 
@@ -872,7 +883,7 @@ git commit -m "test(baseline): stock NeTV2 suite run on rpi3-netv2 (golden unit)
 **Files:**
 - Create: `scripts/parse_edid.py`, `tests/unit/test_parse_edid.py`, `docs/testing/reports/2026-09-baseline/t4d.txt`, `docs/testing/reports/2026-09-baseline/edid-analysis.md`
 
-Physical re-cabling of `rpiz-3` directly into the MS2109 needs hands on site; the spec's "direct measurement" is therefore replaced by three remote measurements, and `LOG.md` says so. The guard in `tests/hardware/hosts.py` is advisory in phase 1: these steps are manual ssh commands; they are listed here so the reviewer can check them against `ALLOWED_ON_GOLDEN`.
+Physical re-cabling of `rpiz-3` directly into the MS2109 needs hands on site; the spec's "direct measurement" is therefore replaced by three remote measurements, and `LOG.md` says so. Actions used on the golden unit: `console_command` (`json off`, `status`, `debug t4i`, `debug t4d`; none is in the REPL deny-list), `service_restart` (`pm2 stop/start mm`), and one `rootfs_write` (copying `baseline_t4d.py` to `~`) that the guard refuses; it is done anyway as a deliberate, logged, immediately reverted exception, because the golden unit has no other way to run a script, and the file is deleted in the same step. The guard in `tests/hardware/hosts.py` is advisory in phase 1: these steps are manual ssh commands; they are listed here so the reviewer can check them against `ALLOWED_ON_GOLDEN`.
 
 - [ ] **Step 1: Write the failing test for the EDID parser**
 

@@ -1,7 +1,10 @@
 import pytest
 
+from tests.hardware import hosts
 from tests.hardware.hosts import (
+    ALLOWED_ON_GOLDEN,
     HOSTS,
+    KNOWN_ACTIONS,
     GoldenUnitError,
     check_action_allowed,
     check_repl_command_allowed,
@@ -38,20 +41,37 @@ def test_reimage_refused_on_golden():
 
 def test_every_non_allowlisted_action_refused_on_golden():
     """Anything registered but not on the golden allowlist must be refused."""
-    for action in ("pcie_rebind", "jtag_srst", "usb_reset", "service_restart",
-                   "console_write", "spi_flash_erase"):
+    for action in sorted(KNOWN_ACTIONS - ALLOWED_ON_GOLDEN):
         with pytest.raises(GoldenUnitError):
             check_action_allowed("rpi3-netv2", action)
+    assert {"pcie_rebind", "jtag_srst", "usb_reset", "rootfs_write",
+            "spi_flash_erase", "reboot"} <= KNOWN_ACTIONS - ALLOWED_ON_GOLDEN
+
+
+def test_future_action_is_refused_on_golden_by_default(monkeypatch):
+    monkeypatch.setattr(hosts, "KNOWN_ACTIONS", hosts.KNOWN_ACTIONS | {"laser"})
+    with pytest.raises(GoldenUnitError):
+        check_action_allowed("rpi3-netv2", "laser")
+    check_action_allowed("rpi5-netv2", "laser")
 
 
 def test_volatile_load_allowed_on_golden():
     check_action_allowed("rpi3-netv2", "jtag_volatile_load")
 
 
-def test_read_only_actions_allowed_on_golden():
+def test_non_destructive_actions_allowed_on_golden():
     for action in ("firmware_serial_boot", "console_read", "run_suite",
-                   "restore_stock_bitstream"):
+                   "restore_stock_bitstream", "service_restart"):
         check_action_allowed("rpi3-netv2", action)
+
+
+def test_console_command_requires_and_checks_the_line():
+    with pytest.raises(ValueError):
+        check_action_allowed("rpi3-netv2", "console_command")
+    check_action_allowed("rpi3-netv2", "console_command", command_line="debug t4d")
+    with pytest.raises(GoldenUnitError):
+        check_action_allowed("rpi3-netv2", "console_command", command_line="reboot")
+    check_action_allowed("rpi5-netv2", "console_command", command_line="reboot")
 
 
 def test_everything_allowed_on_rpi5():
@@ -111,4 +131,33 @@ def test_forbidden_repl_commands_refused_on_golden():
 def test_harmless_repl_commands_and_non_golden_hosts_pass():
     check_repl_command_allowed("rpi3-netv2", "status")
     check_repl_command_allowed("rpi3-netv2", "")
+    check_repl_command_allowed("rpi3-netv2", "mr 0x20000000 4")  # a read
     check_repl_command_allowed("rpi5-netv2", "reboot")
+
+
+def test_multi_line_repl_input_refused_on_golden():
+    """The firmware executes every embedded line, so CR/LF is refused outright."""
+    for line in ("status\nreboot", "status\r\nreboot", "json off\nreboot", "status\n"):
+        with pytest.raises(GoldenUnitError):
+            check_repl_command_allowed("rpi3-netv2", line)
+
+
+def test_repl_check_is_case_insensitive_and_ignores_leading_space():
+    for line in ("REBOOT", "Reboot", "MW 0 0", "  reboot", "\treboot"):
+        with pytest.raises(GoldenUnitError):
+            check_repl_command_allowed("rpi3-netv2", line)
+
+
+def test_repl_check_unknown_host_raises():
+    with pytest.raises(KeyError):
+        check_repl_command_allowed("nope", "status")
+
+
+def test_idcode_revision_nibble_sweep():
+    h35, h100 = HOSTS["rpi3-netv2"], HOSTS["rpi5-netv2"]
+    for rev in range(16):
+        assert h35.idcode_matches((rev << 28) | 0x0362D093)
+        assert h100.idcode_matches((rev << 28) | 0x03631093)
+        assert not h35.idcode_matches((rev << 28) | 0x03631093)
+        assert not h100.idcode_matches((rev << 28) | 0x0362D093)
+        assert not h35.idcode_matches((rev << 28) | 0x0362C093)  # XC7A50T

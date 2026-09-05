@@ -22,18 +22,29 @@ Both the host set and the action set are allowlists, never deny-lists:
 The golden unit
 ---------------
 ``rpi3-netv2`` is the untouched 2018 reference unit: stock 2019 SPI flash,
-stock rootfs. It may only receive volatile JTAG loads, firmware serial boot,
-read-only console traffic and runs of the imported test suite. Never SPI flash
-writes or erases, never a reboot, never JTAG SRST, never a power cycle,
-re-imaging, USB reset or a service change beyond what the suite itself does.
+stock rootfs. It may only receive volatile JTAG loads (including the reload of
+the stock bitstream that ends every run), firmware serial boot, console traffic
+that passes :func:`check_repl_command_allowed`, restarts of the user-session
+services the suite itself pauses (``pm2 mm``, ``lightdm``), and runs of the
+imported test suite. ``run_suite`` is the widest grant in the set: the suite
+pauses and restores those services and writes volatile CSRs over the console.
+Never SPI flash writes or erases, never a reboot, never JTAG SRST, never a
+power cycle, re-imaging, USB reset, or a write to the reference rootfs.
 
-Forbidden REPL commands
------------------------
-The 2019 firmware REPL (``legacy/firmware/ci.c`` lines 800 to 802) exposes
-``reboot`` (jumps back to the BIOS, losing the running configuration),
-``mw`` (arbitrary 32-bit write anywhere in the address map) and ``mc``. None of
-them may ever be sent to a golden host; :func:`check_repl_command_allowed` is
-the single place a console wrapper checks that.
+Console commands on the golden unit
+-----------------------------------
+``console_command`` is the action for sending a REPL line. On the golden unit
+it is allowed only together with the line itself, so
+:func:`check_action_allowed` requires ``command_line`` for that action and runs
+:func:`check_repl_command_allowed` on it. The 2019 firmware REPL
+(``legacy/firmware/ci.c`` lines 800 to 803) exposes ``reboot`` (jumps back to
+the BIOS, losing the running configuration), ``mw`` (arbitrary 32-bit write
+anywhere in the address map) and ``mc`` (memory copy). None of them may ever be
+sent to a golden host. The firmware dispatches on the first token of *each
+line* (``readstr`` returns on every CR or LF), so a command line containing a
+CR or LF is refused outright rather than inspected token by token. The check
+is case-insensitive as defence in depth even though the firmware's ``strcmp``
+would not execute an upper-case spelling.
 
 IDCODE revision nibble
 ----------------------
@@ -118,33 +129,35 @@ HOSTS = {
     ),
 }
 
-# The only actions the golden unit may ever receive.
+# The only actions the golden unit may ever receive. "console_command" is
+# allowed only with its command line, see check_action_allowed.
 ALLOWED_ON_GOLDEN = frozenset({
     "jtag_volatile_load",
+    "restore_stock_bitstream",
     "firmware_serial_boot",
     "console_read",
+    "console_command",
+    "service_restart",
     "run_suite",
-    "restore_stock_bitstream",
 })
 
 # Every action a hardware script may ask about. Anything outside this set is a
 # programming error (ValueError); anything inside it but outside
 # ALLOWED_ON_GOLDEN is refused on the golden unit.
 KNOWN_ACTIONS = ALLOWED_ON_GOLDEN | frozenset({
-    "console_write",
     "spi_flash_write",
     "spi_flash_erase",
     "jtag_srst",
     "reboot",
     "power_cycle",
     "reimage",
+    "rootfs_write",
     "usb_reset",
-    "service_restart",
     "pcie_rebind",
 })
 
 # 2019 firmware REPL commands that must never reach a golden host
-# (legacy/firmware/ci.c lines 800 to 802).
+# (legacy/firmware/ci.c lines 800 to 803: reboot, mr, mw, mc; mr is a read).
 GOLDEN_FORBIDDEN_REPL_COMMANDS = frozenset({"reboot", "mw", "mc"})
 
 
@@ -160,11 +173,19 @@ def resolve_host(spec: str) -> Host:
     raise KeyError(f"unknown host {spec!r}")
 
 
-def check_action_allowed(host_spec: str, action: str) -> None:
-    """Raise unless ``action`` may be performed on ``host_spec``."""
+def check_action_allowed(host_spec: str, action: str, command_line: str | None = None) -> None:
+    """Raise unless ``action`` may be performed on ``host_spec``.
+
+    For ``console_command`` the REPL line must be supplied; on a golden host it
+    is then checked with :func:`check_repl_command_allowed`.
+    """
     host = resolve_host(host_spec)  # KeyError for unknown hosts is intended
     if action not in KNOWN_ACTIONS:
         raise ValueError(f"unknown action {action!r}")
+    if action == "console_command":
+        if command_line is None:
+            raise ValueError("console_command requires command_line")
+        check_repl_command_allowed(host_spec, command_line)
     if host.golden and action not in ALLOWED_ON_GOLDEN:
         raise GoldenUnitError(f"{action} is forbidden on golden unit {host.name}")
 
@@ -172,14 +193,19 @@ def check_action_allowed(host_spec: str, action: str) -> None:
 def check_repl_command_allowed(host_spec: str, command_line: str) -> None:
     """Raise if a firmware REPL command line is forbidden on ``host_spec``.
 
-    Only the first whitespace-separated token is inspected, which is what the
-    2019 command parser dispatches on.
+    A line containing CR or LF is refused on a golden host because the firmware
+    would execute every embedded line. Otherwise the first whitespace-separated
+    token, case-folded, is compared with :data:`GOLDEN_FORBIDDEN_REPL_COMMANDS`.
     """
     host = resolve_host(host_spec)
     if not host.golden:
         return
+    if "\r" in command_line or "\n" in command_line:
+        raise GoldenUnitError(
+            f"multi-line REPL input is forbidden on golden unit {host.name}: {command_line!r}"
+        )
     tokens = command_line.split()
-    if tokens and tokens[0] in GOLDEN_FORBIDDEN_REPL_COMMANDS:
+    if tokens and tokens[0].casefold() in GOLDEN_FORBIDDEN_REPL_COMMANDS:
         raise GoldenUnitError(
             f"REPL command {tokens[0]!r} is forbidden on golden unit {host.name}"
         )

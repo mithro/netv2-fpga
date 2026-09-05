@@ -27,3 +27,10 @@ done, what was measured, and what is still open.
   ten64 source agent on rpiz-3 listens unauthenticated on all interfaces as root and
   the suite relies on broad passwordless sudo (pre-existing, fix when the suite is next
   edited); `git log modern..phase0-repo-setup` includes the 60 imported suite commits.
+- Re-review of the fixes: correctness approved; hardware safety found that the
+  REPL filter could be bypassed with an embedded newline (the firmware executes
+  every line) and that the plan still carried the rejected deny-list code. Fixed:
+  CR/LF refused outright, case-folded token check, `console_command` requires
+  its line and is filtered, `service_restart` (pm2 mm, lightdm) allowed on the
+  golden unit as the suite already does it, `rootfs_write` added and refused,
+  plan Task 8 marked superseded. 28 unit tests.
