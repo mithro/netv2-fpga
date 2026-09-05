@@ -18,6 +18,12 @@ done, what was measured, and what is still open.
   df02245 and the phase 1 merge; nothing was built from them.
 - Phase 1 tasks 10, 11, 12 (docs), 13 (baseline run) and 15 (2019 rebuild) run in
   parallel without committing; the controller commits. Task 14 follows 13.
+- User instruction: created `mithro/netv2-testsuite` (public) with the GitHub.md
+  settings; pushed the ten64 suite history (65 commits, `main` at c30a0af, tag
+  `v0.0` on the root commit); ten64's `~/github/mithro/netv2` now tracks it. The
+  subtree in `tests/hdmi-suite/` is refreshed from it with `git subtree pull`.
+  User also said: accept the changed tweed host key, and use IPv6 or private IPv4
+  (never the public IPv4) for the lab hosts.
 
 ## 2026-09-05
 

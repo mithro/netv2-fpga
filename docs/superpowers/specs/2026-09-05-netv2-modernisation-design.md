@@ -37,7 +37,7 @@ costs the most.
 | 1 | LiteX-family deps whose fork network `mithro` already forks | AlphamaxMedia branches pushed into the existing `mithro/*` forks as `alphamax-<branch>` branches (done 2026-09-05). Modern build uses upstream releases, not these forks. |
 | 2 | Home for new work | `mithro/netv2-fpga`. `master` kept as the pristine AlphamaxMedia master; integration branch `modern`; feature branches merged into `modern` via PRs on the fork. |
 | 3 | Fork scope | All 23 org repos forked or branch-archived under `mithro` (done). |
-| 4 | Test suite repo | Creating a new GitHub repo was blocked by the permission classifier. The ten64 suite (fetched as remote `ten64-testsuite/main` in this checkout) is merged into `mithro/netv2-fpga` under `tests/hdmi-suite/` as a git subtree with history. The user can split it out later. |
+| 4 | Test suite repo | The suite's canonical home is `mithro/netv2-testsuite` (created 2026-09-05 at the user's request, settings per their GitHub.md, `main` protected, tag ruleset vXX.ZZZ; ten64's working copy now tracks it). `mithro/netv2-fpga` carries it under `tests/hdmi-suite/` as a git subtree, refreshed with `git subtree pull --prefix=tests/hdmi-suite <url> main`; changes to the suite are made in its own repo, never in the subtree. |
 | 5 | ten64 `~/local/netv2` notes | Folded into `docs/` (Pi 5 programming notes). |
 | 6 | **risky** `rpi3-netv2` golden unit | Never re-imaged, never SPI-flashed, never power-cycled by me. Volatile JTAG loads only, stock bitstream reloaded after every run. A netbooting fpgas.online Pi 3B+ node is the modern-OS Pi 3 target once access is sorted out. |
 | 7 | Netboot nodes | Unknown access path (tweed host key changed). Treated as a later-phase dependency; infra repos are read-only. |
