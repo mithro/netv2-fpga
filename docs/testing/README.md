@@ -7,3 +7,8 @@
 - Reports: `docs/testing/reports/<YYYY-MM>-<name>/` with `report.md`, `report.json`,
   evidence. The imported suite's own historical output lives at
   `tests/hdmi-suite/reports/`.
+
+Evidence images are currently committed as raw PPM. Follow-up (tracked for the
+netv2-testsuite repo): have the capture pipeline emit PNG, or move
+`docs/testing/reports/*/evidence/` to Git LFS, before baseline captures
+recur.

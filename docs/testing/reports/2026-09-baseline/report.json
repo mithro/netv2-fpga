@@ -1,0 +1,469 @@
+{
+  "env": {
+    "agent_info": {
+      "mode": "1920x1080@60.00 148.500 1920/88/44/148/+ 1080/4/5/36/+ 60 (60.00) D 16:9",
+      "counter_enabled": false,
+      "last_flip_time": 616759.883626,
+      "t": 616772.609106403,
+      "edid_bytes": 256,
+      "enabled": true,
+      "flips_logged": 4371,
+      "connector": "HDMI-A-1",
+      "ok": true,
+      "pattern": "geometry",
+      "connected": true,
+      "h": 1080,
+      "w": 1920,
+      "counter": 4371
+    },
+    "dna": "0058a44663258854",
+    "capture_format": "yuyv480",
+    "started": "2026-09-05T07:50:30.058629",
+    "capture_health": {
+      "fps": 27.433273925144796,
+      "good": 53,
+      "n": 180,
+      "duty": 0.29444444444444445
+    }
+  },
+  "results": [
+    {
+      "evidence": [],
+      "area": "console",
+      "metrics": {
+        "dna": "0058a44663258854"
+      },
+      "detail": "OK: help lists 'status' | OK: help lists 'video_matrix' | OK: help lists 'video_mode' | OK: help lists 'debug' | OK: help lists 'hdp_toggle' | OK: board DNA non-zero: 0058a44663258854",
+      "id": "T01",
+      "duration_s": 0.45,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "hpd",
+      "metrics": {
+        "edid_bytes": 256
+      },
+      "detail": "OK: with capture streaming, source sees connector connected | OK: source reads 256-byte EDID through NeTV2 passthrough",
+      "id": "T02",
+      "duration_s": 0.06,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "edid",
+      "metrics": {
+        "edid_name": "HD TO USB"
+      },
+      "detail": "OK: EDID at least 128 bytes (256) | OK: EDID monitor name is 'HD TO USB' (got 'HD TO USB') | OK: EDID advertises 1920x1080",
+      "id": "T03",
+      "duration_s": 0.01,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "lock",
+      "metrics": {
+        "lock_time_s": 1.82
+      },
+      "detail": "OK: status input0 = 1920x1080 | OK: input0 pixel clock ~148.5 MHz (148.490 ~= 148.500 +-0.300)",
+      "id": "T04",
+      "duration_s": 5.0,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "lock",
+      "metrics": {
+        "samples": 242,
+        "charsync_all_111": true,
+        "locked_fraction": 1.0
+      },
+      "detail": "OK: collected >=20 debug samples (242) | OK: input0 res+chansync stable in >=95% of samples (100.0%) | OK: WER == 0 across the settled tail (0 bad)",
+      "id": "T05",
+      "duration_s": 20.43,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "lock",
+      "metrics": {
+        "input1": {
+          "mhz": 148.49,
+          "hres": 1920,
+          "vres": 1080
+        }
+      },
+      "detail": "OK: overlay input1 = 1920x1080 | OK: input1 pixel clock ~148.5 MHz (148.490 ~= 148.500 +-0.300)",
+      "id": "T06",
+      "duration_s": 0.23,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "output",
+      "metrics": {
+        "capture_duty": 0.189,
+        "good_frames": 34,
+        "capture_fps": 24.1
+      },
+      "detail": "OK: capture delivers frames | OK: capture path delivers >= 18 fps (24.1) | capture duty 19% (MS2109 intermittent sync; NeTV2 output itself is stable)",
+      "id": "T07",
+      "duration_s": 11.1,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "output",
+      "metrics": {
+        "black_mean_luma": 1.1,
+        "white_mean_luma": 254.4
+      },
+      "detail": "OK: white source -> bright capture (mean luma 254) | OK: black source -> dark capture (mean luma 1)",
+      "id": "T08",
+      "duration_s": 4.7,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "output",
+      "metrics": {
+        "grey_ramp": [
+          0.0,
+          31.0,
+          74.0,
+          115.7,
+          156.8,
+          199.0,
+          242.0,
+          255.0
+        ],
+        "worst_colour_err": 18.0
+      },
+      "detail": "bar0 exp(255, 255, 255) got(251, 251, 251) err4 | bar1 exp(255, 255, 0) got(254, 254, 6) err6 | bar2 exp(0, 255, 255) got(18, 255, 255) err18 | bar3 exp(0, 255, 0) got(0, 255, 0) err0 | bar4 exp(255, 0, 255) got(255, 0, 255) err0 | bar5 exp(255, 0, 0) got(252, 0, 0) err3 | bar6 exp(0, 0, 255) got(0, 0, 255) err0 | bar7 exp(0, 0, 0) got(0, 0, 0) err0 | OK: all colour bars within 40/255 (worst 18) | OK: grey ramp monotonically increasing: [0, 31, 73, 115, 156, 199, 242, 255]",
+      "id": "T09",
+      "duration_s": 2.89,
+      "status": "PASS"
+    },
+    {
+      "evidence": [
+        "T10_geometry.ppm"
+      ],
+      "area": "output",
+      "metrics": {
+        "bg_luma": 0.0
+      },
+      "detail": "corner br luma 255 | OK: corner br is bright (255) | corner tl luma 255 | OK: corner tl is bright (255) | corner tr luma 255 | OK: corner tr is bright (255) | corner bl luma 255 | OK: corner bl is bright (255) | OK: centre square bright | OK: background dark between marks",
+      "id": "T10",
+      "duration_s": 5.35,
+      "status": "PASS"
+    },
+    {
+      "evidence": [
+        "T11_keying.ppm"
+      ],
+      "area": "overlay",
+      "metrics": {
+        "bright_block_luma": 255.0,
+        "transparent_bg_luma": 137.0
+      },
+      "detail": "OK: opaque white overlay block shows white (luma 255) | OK: black overlay background keys out -> shows grey source (luma 137) | OK: opaque and keyed-out regions clearly differ (255 vs 137)",
+      "id": "T11",
+      "duration_s": 10.08,
+      "status": "PASS"
+    },
+    {
+      "evidence": [
+        "T12_margins.ppm"
+      ],
+      "area": "overlay",
+      "metrics": {
+        "left_margin_luma": 72.9,
+        "inside_luma": 255.0
+      },
+      "detail": "OK: overlay inside rect is visible (luma 255) | OK: overlay strip in x<32 margin is excluded (shows black source, luma 73)",
+      "id": "T12",
+      "duration_s": 4.07,
+      "status": "PASS"
+    },
+    {
+      "evidence": [
+        "T13_threshold.ppm"
+      ],
+      "area": "overlay",
+      "metrics": {
+        "below_thresh_luma": 24.0,
+        "above_thresh_luma": 221.0
+      },
+      "detail": "OK: overlay value 100 below thresh 128 -> transparent, shows dark source (luma 24) | OK: overlay value 200 above thresh 128 -> opaque (luma 221) | OK: threshold clearly separates 100 and 200 (221 vs 24)",
+      "id": "T13",
+      "duration_s": 7.5,
+      "status": "PASS"
+    },
+    {
+      "evidence": [
+        "T14_setrect.ppm"
+      ],
+      "area": "overlay",
+      "metrics": {
+        "inside_newrect_luma": 255.0,
+        "outside_newrect_luma": 93.0
+      },
+      "detail": "OK: overlay inside shrunk rect visible (255) | OK: overlay outside shrunk rect hidden (shows source, luma 93)",
+      "id": "T14",
+      "duration_s": 6.08,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "overlay",
+      "metrics": {
+        "cross_centroid": [
+          974.7,
+          540.0
+        ]
+      },
+      "detail": "OK: overlay cross centroid near (960,540): got (975,540)",
+      "id": "T15",
+      "duration_s": 5.7,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "output",
+      "metrics": {
+        "frames_captured": 360,
+        "counter_backwards": 0,
+        "counters_decoded": 170
+      },
+      "detail": "OK: decoded source frame counter never goes backwards (0)",
+      "id": "T16",
+      "duration_s": 21.52,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "latency",
+      "metrics": {
+        "overlay_latency_ms": {
+          "n": 1501,
+          "std_ms": 9.69,
+          "min_ms": -5.93,
+          "max_ms": 36.22,
+          "mean_ms": 10.83,
+          "median_ms": 10.98
+        },
+        "passthrough_latency_ms": {
+          "n": 0
+        },
+        "frames_seen": 1800,
+        "clock_offset_err_ms": 1.531,
+        "good_frames": 1501,
+        "rtt": {
+          "min_ms": 3.0629169195890427,
+          "median_ms": 4.017083905637264,
+          "n": 50,
+          "max_ms": 9.023854043334723
+        },
+        "netv2_overlay_extra_ms": null,
+        "clock_offset_ms": -3229031416.568,
+        "passthrough_samples": 0
+      },
+      "detail": "OK: overlay-path frame latency positive (median 11.0 ms) | OK: no sample far below zero (min -5.9 ms, frame-boundary noise) | OK: overlay-path frame latency bounded (max 36.2 ms) | overlay-path latency: mean 10.8 ms, median 11.0, min -5.9, max 36.2 over 1501 samples (includes the MS2109 capture card) | differential NeTV2-only latency not computed: only 0 passthrough frames captured (MS2109 rarely syncs to the source-passthrough path at present duty)",
+      "id": "T17",
+      "duration_s": 73.26,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "console",
+      "metrics": {},
+      "detail": "OK: video_matrix lists input0 and input1 sources | OK: video_matrix lists the pattern source | OK: video_mode list includes 1920x1080@60 | OK: video_mode list includes 1280x720@60",
+      "id": "T18",
+      "duration_s": 3.37,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "mode",
+      "metrics": {
+        "720p_lock_time_s": 4.97,
+        "input0_720p": {
+          "mhz": 74.24,
+          "hres": 1280,
+          "vres": 720
+        }
+      },
+      "detail": "OK: input0 relocks at 1280x720 | OK: 720p pixel clock ~74.25 MHz (74.240 ~= 74.250 +-0.300) | OK: input0 returns to 1920x1080 after switch back",
+      "id": "T19",
+      "duration_s": 15.56,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "lock",
+      "metrics": {
+        "loss_detect_s": 1.23,
+        "recovery_s": 13.57
+      },
+      "detail": "OK: NeTV2 reports source loss after DPMS off | OK: NeTV2 re-locks after source returns",
+      "id": "T20",
+      "duration_s": 17.5,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "console",
+      "metrics": {
+        "json": {
+          "hdmi_Rx_pixel_clock": 148498104,
+          "hdmi_Rx_hres": 1920,
+          "hdmi_Rx_vres": 1080
+        }
+      },
+      "detail": "OK: json has hdmi_Rx_hres | OK: json has hdmi_Rx_vres | OK: json has hdmi_Rx_pixel_clock | OK: json has overlay_hres | OK: json input0 res 1920x1080 (got 1920x1080) | OK: json pixel clock ~148.5 MHz (148.498 ~= 148.500 +-0.300) | OK: json and status agree on hres",
+      "id": "T21",
+      "duration_s": 2.62,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "console",
+      "metrics": {
+        "fpga_die_c": 77.0
+      },
+      "detail": "OK: FPGA die temp sane and < 90C: 77.0C",
+      "id": "T22",
+      "duration_s": 0.23,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "audio",
+      "metrics": {
+        "captured_audio_rms": 0.0,
+        "alsa_card": 1
+      },
+      "detail": "NeTV2 MVP gateware has no HDMI audio path (video-only); output carries no audio, capture rms=0. Documented gateware limitation.",
+      "id": "T23",
+      "duration_s": 2.73,
+      "status": "SKIP"
+    },
+    {
+      "evidence": [
+        "T24_pipe_override.ppm"
+      ],
+      "area": "overlay",
+      "metrics": {
+        "overlay_block_luma_normal": 255.0,
+        "overlay_block_luma_override": 137.0
+      },
+      "detail": "OK: overlay block visible (white) with compositor active (255) | OK: pipe_override bypasses overlay: block replaced by grey source (137) | OK: overlay clearly gone under pipe_override (255 -> 137)",
+      "id": "T24",
+      "duration_s": 4.63,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "lock",
+      "metrics": {
+        "overlay_symbol_errors_sum": 0,
+        "overlay_symbol_sync": 111,
+        "overlay_hres": 1920
+      },
+      "detail": "OK: overlay input symbol-sync locked on all 3 channels (111) | OK: overlay input symbol errors == 0 (0) | OK: overlay input hres 1920 (1920)",
+      "id": "T25",
+      "duration_s": 2.39,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "overlay",
+      "metrics": {
+        "block_luma_after_resume": 137.0
+      },
+      "detail": "OK: overlay block visible before stop (255) | OK: run resumes the fb writer: blanked overlay propagates, block gone (137)",
+      "id": "T26",
+      "duration_s": 8.52,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "overlay",
+      "metrics": {
+        "block_luma_redrawn_after_rect": 255.0,
+        "block_luma_blanked_after_rect": 137.0
+      },
+      "detail": "OK: overlay visible before rectoff | OK: after rectoff->rect the overlay is live and hideable (blank -> 137) | OK: after rectoff->rect the overlay is live and showable (redraw -> 255) | OK: rectoff/rect leaves the overlay fully controllable (255 vs 137)",
+      "id": "T27",
+      "duration_s": 5.97,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "lock",
+      "metrics": {
+        "hpd_force_loss_s": 1.13
+      },
+      "detail": "OK: NeTV2 hpdforce drops the source link (input0 lost) | OK: input0 re-locks after hpdrelax",
+      "id": "T28",
+      "duration_s": 27.26,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "edid",
+      "metrics": {
+        "snoop_bytes": 256,
+        "snoop_nonzero": 0
+      },
+      "detail": "i2c_snoop watches the HDCP DDC port (0x74); EDID DDC is at 0x50 and there is no HDCP source, so the snoop buffer is legitimately empty (0/256 non-zero). Command mechanism verified.",
+      "id": "T29",
+      "duration_s": 0.23,
+      "status": "SKIP"
+    },
+    {
+      "evidence": [],
+      "area": "mode",
+      "metrics": {
+        "relock_after_video_mode_s": 13.07,
+        "video_mode_index": 11
+      },
+      "detail": "OK: found a 1920x1080@60 firmware video_mode index | OK: board re-locks at 1080p after video_mode reconfig",
+      "id": "T30",
+      "duration_s": 22.31,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "console",
+      "metrics": {
+        "ddr_mbps": {
+          "write": 3986,
+          "read": 4092,
+          "all": 8078
+        }
+      },
+      "detail": "OK: DDR bandwidth non-zero (all=8078 Mbps) | OK: DDR write bandwidth non-zero (overlay fb writer, 3986 Mbps)",
+      "id": "T31",
+      "duration_s": 2.16,
+      "status": "PASS"
+    },
+    {
+      "evidence": [],
+      "area": "gaps",
+      "metrics": {},
+      "detail": "Genuine gaps on this rig/gateware: HDCP engine + `debug km` (no HDCP source); output1 / encoder / dma_writer / dma_reader / sdram_test (compiled out of this magic-mirror gateware, absent from live help); HDMI audio (no I2S/SPDIF path in gateware, see T23); Ethernet/etherbone (RMII PHY present but uncabled). `video_matrix connect` and the `pattern` source are inert in this gateware (processor_update is empty, the output mux is hardwired), so only their listings are checked (T18).",
+      "id": "T90",
+      "duration_s": 0.0,
+      "status": "SKIP"
+    }
+  ],
+  "finished": "2026-09-05T07:55:26.480203",
+  "counts": {
+    "FAIL": 0,
+    "PASS": 29,
+    "SKIP": 3,
+    "BLOCKED": 0
+  }
+}

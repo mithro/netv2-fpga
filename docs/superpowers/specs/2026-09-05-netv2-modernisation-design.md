@@ -1,8 +1,9 @@
 # NeTV2 modernisation: design
 
-Status: v2.3, 2026-09-05 (v1 reviewed for completeness and technical feasibility,
+Status: v2.4, 2026-09-05 (v1 reviewed for completeness and technical feasibility,
 v2 re-reviewed for completeness; v2.3 adds corrections found while reviewing the
-phase 0/1 plan). Author: Claude (Fable 5.1) working for
+phase 0/1 plan; v2.4 adds the corrections established by the phase 1
+documentation of the original design). Author: Claude (Fable 5.1) working for
 Tim Ansell (mithro).
 
 ## 1. Goal
@@ -36,7 +37,7 @@ costs the most.
 | 1 | LiteX-family deps whose fork network `mithro` already forks | AlphamaxMedia branches pushed into the existing `mithro/*` forks as `alphamax-<branch>` branches (done 2026-09-05). Modern build uses upstream releases, not these forks. |
 | 2 | Home for new work | `mithro/netv2-fpga`. `master` kept as the pristine AlphamaxMedia master; integration branch `modern`; feature branches merged into `modern` via PRs on the fork. |
 | 3 | Fork scope | All 23 org repos forked or branch-archived under `mithro` (done). |
-| 4 | Test suite repo | Creating a new GitHub repo was blocked by the permission classifier. The ten64 suite (fetched as remote `ten64-testsuite/main` in this checkout) is merged into `mithro/netv2-fpga` under `tests/hdmi-suite/` as a git subtree with history. The user can split it out later. |
+| 4 | Test suite repo | The suite's canonical home is `mithro/netv2-testsuite` (created 2026-09-05 at the user's request, settings per their GitHub.md, `main` protected, tag ruleset vXX.ZZZ; ten64's working copy now tracks it). `mithro/netv2-fpga` carries it under `tests/hdmi-suite/` as a git subtree, refreshed with `git subtree pull --prefix=tests/hdmi-suite <url> main`; changes to the suite are made in its own repo, never in the subtree. |
 | 5 | ten64 `~/local/netv2` notes | Folded into `docs/` (Pi 5 programming notes). |
 | 6 | **risky** `rpi3-netv2` golden unit | Never re-imaged, never SPI-flashed, never power-cycled by me. Volatile JTAG loads only, stock bitstream reloaded after every run. A netbooting fpgas.online Pi 3B+ node is the modern-OS Pi 3 target once access is sorted out. |
 | 7 | Netboot nodes | Unknown access path (tweed host key changed). Treated as a later-phase dependency; infra repos are read-only. |
@@ -99,6 +100,28 @@ pass through today; the baseline suite's T23 nevertheless measured silence and
 skipped, which is undiagnosed (decision 12). An HDCP cipher path lets the
 overlay be re-encrypted on encrypted links. Multi-resolution autodetect (720p,
 1080p, 1080i) landed 2019-09.
+
+Corrections established by the phase 1 documentation pass (`docs/original/`,
+each cited there):
+
+- The SD slot has no pads in `netv2mvp.py`; the 2019 gateware never used it
+  (the mention above is board hardware only).
+- `pipe_override` has a CSR and a firmware command but is read by nothing in the
+  shipped top level (only in the unshipped `netv2mvp_genddr.py`); `rect_thresh`
+  does not exist, the chroma window `chroma_key_lo/hi` (byte order 0xBBGGRR) is
+  the compositing mechanism. The suite's `debug rectthresh` command has no
+  handler in the 2019 firmware and falls through to the debug help; the contract
+  marks it and phase 3 decides whether to implement it.
+- The shipped firmware on the golden unit predates `debug t4i`/`debug t4d`;
+  TERC4 counter evidence needs a phase 7a firmware.
+- `legacy/firmware/compute_ksv.c` contains an HDCP key table shipped by the
+  original public repository; it is documented but never reproduced or extended
+  (decision 15).
+- The `-t pcie` target in `netv2mvp.py` cannot build (no SoC branch); the
+  original PCIe work lives in `netv2-soc`, not here.
+- The product image has OpenOCD at `/usr/local`, not `/opt/openocd` as every
+  original document says; pm2 runs `npm start`, not `mm.sh`; the factory scripts
+  use `/dev/ttyAMA0` while the product uses `/dev/ttyS0`.
 
 Firmware (`firmware/`, C, RISC-V): a serial REPL (`status`, `json`, `debug`,
 `video_mode`, `video_matrix`, rectangle and chroma commands, EDID, MMCM DRP
