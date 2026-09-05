@@ -58,7 +58,7 @@ RESULTS = WORK / "mod_rx_results.txt"
 SNAPSHOT = "mod_rx_sim"
 TOP = "tb_hdcp_mod_rx"
 
-# vector 0 is the rig Km (see gen_cipher_vectors.VECTORS)
+# vector 0 is a throwaway test Km (see gen_cipher_vectors.VECTORS); the real rig Km is never committed
 RIG_KM = 0xF26625C3367E6E
 RIG_AN = 0x34271C130C070403
 
@@ -193,7 +193,7 @@ def main() -> int:
     py_ok = compare(row)
 
     if py_ok and tb_pass and not tb_fail:
-        print(f"Rig Km={row['km']:014x} -> RTL R0'={row['r0']} "
+        print(f"Test Km={row['km']:014x} -> RTL R0'={row['r0']} "
               f"Ri_link@128={row['ri128']} @256={row['ri256']} (match oracle)")
         print("PASS")
         return 0

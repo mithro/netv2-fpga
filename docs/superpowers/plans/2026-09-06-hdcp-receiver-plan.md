@@ -30,7 +30,7 @@ output register that shifts `ostream[23:16]` in the same `BLOCK_8`/`BLOCK_9`/`GE
 (`statecnt` 55, 56) that the existing code uses to shift `ostream[15:0]` into `Mi`
 (hdcp_cipher.v:176-182, 414-427 in hdcp_block terms), plus an `R0_valid` strobe on the
 `GET_M -> STREAM` transition. Testbench `tests/sim/hdcp/tb_cipher_rx.v` driven by stimulus generated
-from `netv2/hdcp/cipher.py`: for the shared keys' Km (0xf26625c3367e6e) and several An, assert the
+from `netv2/hdcp/cipher.py`: for the shared keys' agreed Km (from the gitignored handoff manifest, not committed) and several An, assert the
 RTL `Ri` after authentication equals the model R0, and Ri after 128 rekeys equals the model's
 frame-128 Ri. **Exit:** `R0 == model` for all vectors in xsim (the capture-window gate, spec §5.1).
 
@@ -47,7 +47,7 @@ reads correct; the slave never drives SDA when not addressed or when `rx_enable=
 40x56 sink-key store in distributed RAM (spec §4.1; the 35T is at 95% BRAM), loaded via CSRs
 (index, data lo/hi, write strobe, `keys_loaded` count). On the last Aksv byte, a 40-cycle
 accumulator sums the keys at Aksv's set bits mod 2^56 -> `Km_hw`, `Km_valid_hw`. Testbench loads
-`sink_keys.bin`, drives Aksv=KSV_source, asserts `Km_hw == 0xf26625c3367e6e`; a half-loaded store
+`sink_keys.bin`, drives Aksv=KSV_source, asserts `Km_hw` equals the oracle `km_from_keys(sink_keys, KSV_source)` computed at runtime (the agreed Km is not written into any committed file); a half-loaded store
 produces no `Km_valid_hw`; Aksv rewritten mid-accumulate restarts cleanly (spec §10.2 cases 5,6).
 
 ### H4 — migen wrapper `HDCPReceiver(Module, AutoCSR)` + CDC

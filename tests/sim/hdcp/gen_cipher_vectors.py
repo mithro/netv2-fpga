@@ -24,11 +24,13 @@ if str(REPO_ROOT) not in sys.path:
 
 from netv2.hdcp.cipher import HDCPCipher
 
-# (name, Km, An).  Vector 0 is the shared-rig Km; the design of record requires
-# it plus the fixed 0x0123456789abcd/0xfedcba9876543210 pair; a third gives a
-# second independent check.
+# (name, Km, An).  These are THROWAWAY test Km values, NOT the shared-rig Km.
+# The cipher/controller tests only verify RTL == oracle for whatever Km is
+# supplied, so any value exercises them; the real rig Km is a shared secret and
+# is never committed (it is computed at runtime from the gitignored sink keys by
+# the key-loading tests run_hdcp_rx_km.py / run_hdcp_rx_top.py).
 VECTORS = [
-    ("rig", 0xF26625C3367E6E, 0x34271C130C070403),
+    ("test0", 0x00C0FFEE0D15EA, 0x34271C130C070403),
     ("fixed", 0x0123456789ABCD, 0xFEDCBA9876543210),
     ("tableA3", 0xA423D78B8676A7, 0x0351F7175406A74D),
 ]

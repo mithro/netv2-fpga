@@ -33,7 +33,7 @@ done, what was measured, and what is still open.
   RTL follows on a dedicated branch off `modern`. Key finding relayed to the RPi
   side: `hdcp_mod.v` re-encrypts the overlay, it does not decrypt the
   passthrough, so DoD 3 (clean decode) is new gateware, separate from the
-  receiver (DoD 1+2). Shared closed-loop keys verified (Km 0xf26625c3367e6e); no
+  receiver (DoD 1+2). Shared closed-loop keys verified (the agreed Km, held only in the handoff dir, never committed); no
   real device keys used; key .bin files never committed.
 - Two `git submodule` commands issued to the rebuild agent were blocked by the
   auto-mode classifier; the agent found `sync` was unnecessary and used

@@ -416,7 +416,7 @@ hdcp bksv: 59cabe3384
 hdcp aksv_rx: 108df2b8de
 hdcp an_rx: 46b6537884e56c78
 hdcp ainfo_rx: 00
-hdcp km_hw: f26625c3367e6e
+hdcp km_hw: <agreed Km, redacted -- shared secret, see handoff dir>
 hdcp km_valid: 1
 hdcp r0: a1b2
 hdcp ri: a1b2

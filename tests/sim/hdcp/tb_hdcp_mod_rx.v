@@ -15,7 +15,7 @@
 //     boundary.
 //
 // The golden R0/Ri128/Ri256 come from $readmemh of cipher_vectors.hex
-// (vector 0 = the rig Km 0xf26625c3367e6e), produced by gen_cipher_vectors.py
+// (vector 0 = a throwaway test Km (never the shared-rig secret)), produced by gen_cipher_vectors.py
 // from netv2/hdcp/cipher.py, so the Python model is the oracle (design 5.1).
 //
 // TIMING SHORTCUT (documented per the task): real 1080p frames are ~1.1M pixel
@@ -189,7 +189,7 @@ module tb_hdcp_mod_rx;
 	 timeout = timeout + 1;
       end
 
-      $display("VEC rig Km=%014h An=%016h", Km, An);
+      $display("VEC test Km=%014h An=%016h", Km, An);
       $display("  R0_valid_out seen: %0d", r0_valid_seen);
       if (!r0_valid_seen) begin
 	 errors = errors + 1;
