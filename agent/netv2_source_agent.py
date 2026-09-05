@@ -80,18 +80,29 @@ class Display:
         self.pattern = None
 
     # -- mode handling ------------------------------------------------------
+    # DRM_MODE_FLAG_PIC_AR_MASK: a non-zero picture-aspect field marks a CEA
+    # (VIC) mode.  vc4 only emits a populated AVI InfoFrame for such a mode,
+    # and the NeTV2 resolution detector needs the InfoFrame to report a
+    # resolution -- with the plain detailed-timing "preferred" mode it reads
+    # 0x0 even though the pixel clock locks.  So prefer the CEA mode.
+    PIC_AR_MASK = 0xF << 19
+    PIC_AR_16_9 = 2 << 19
+
     def find_mode(self, w, h, refresh):
         self.conn.refresh()
-        for m in self.conn.get_modes():
-            if m.hdisplay == w and m.vdisplay == h and m.vrefresh == refresh:
-                return m
+        matches = [m for m in self.conn.get_modes()
+                   if m.hdisplay == w and m.vdisplay == h and m.vrefresh == refresh
+                   and not (m.flags & 0x10)]   # skip interlaced (DRM_MODE_FLAG_INTERLACE)
+        if matches:
+            cea = [m for m in matches if m.flags & self.PIC_AR_MASK]
+            return cea[0] if cea else matches[0]
         key = (w, h, refresh)
         if key in CEA_MODES:
             t = CEA_MODES[key]
             m = pykms.videomode_from_timings(*t)
-            # CEA 1080p/720p use positive sync polarities:
-            # DRM_MODE_FLAG_PHSYNC (1) | DRM_MODE_FLAG_PVSYNC (4)
-            m.flags = 5
+            # positive H+V sync (DRM_MODE_FLAG_P*SYNC) plus 16:9 picture aspect
+            # so vc4 emits an AVI InfoFrame with a valid VIC.
+            m.flags = 5 | self.PIC_AR_16_9
             return m
         raise RuntimeError("no mode %dx%d@%d" % (w, h, refresh))
 
