@@ -1,0 +1,12 @@
+| Inter Clock Table
+| -----------------
+------------------------------------------------------------------------------------------------
+
+From Clock              To Clock                    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints  
+----------              --------                    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------  
+main_s7pciephy_clkout1  main_s7pciephy_clkout0        0.611        0.000                      0                  704        0.053        0.000                      0                  704  
+main_s7pciephy_clkout0  main_s7pciephy_clkout1        0.611        0.000                      0                  703        0.053        0.000                      0                  703  
+
+
+------------------------------------------------------------------------------------------------
+| Other Path Groups Table

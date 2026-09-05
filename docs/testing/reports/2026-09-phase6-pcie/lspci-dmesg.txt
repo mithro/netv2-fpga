@@ -1,0 +1,15 @@
+Warning: remote port forwarding failed for listen path /home/tim/.ssh/clipboard.sock
+=== HOST ===
+rpi5-netv2
+2026-09-06T05:05:25+09:30
+=== lspci -nn (full) ===
+0002:00:00.0 PCI bridge [0604]: Broadcom Inc. and subsidiaries BCM2712 PCIe Bridge [14e4:2712] (rev 21)
+0002:01:00.0 Ethernet controller [0200]: Raspberry Pi Ltd RP1 PCIe 2.0 South Bridge [1de4:0001]
+=== bus 0001 root port detail (link state) ===
+bash: line 1: /home/tim/bind_err.txt: Permission denied
+=== dmesg external pcie link ===
+[3027803.322394] brcm-pcie 1000110000.pcie: link down
+[3027804.326391] brcm-pcie 1000110000.pcie: link down
+[3027805.330388] brcm-pcie 1000110000.pcie: link down
+=== 10ee search ===
+(none = not enumerated)
