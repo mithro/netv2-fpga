@@ -30,7 +30,7 @@ self.specials += [
 The two HDMI input clock pads are the other two clock roots. Both are declared
 to the timing engine as 148.5 MHz fundamentals (`netv2mvp.py:931-934`), which is
 why `S7Clocking` asserts `clkin_freq in [74.25e6, 148.5e6]`
-(`legacy/deps/litevideo/litevideo/input/clocking.py:118`) — see section 6 for
+(`legacy/deps/litevideo/litevideo/input/clocking.py:119`) — see section 6 for
 what happens at 74.25 MHz.
 
 ## 2. Every CMT instance in the design

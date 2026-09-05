@@ -218,8 +218,9 @@ self.submodules.hdmi_out0_phy = ClockDomainsRenamer({"pix":"pix_o", "pix5x":"pix
 ```
 (`legacy/netv2mvp.py:868-871`)
 
-`mode="raw"` changes the PHY's sink from an RGB+sync layout to three 10-bit
-character fields (`legacy/deps/litevideo/litevideo/output/common.py:40-44`) and
+`mode="raw"` changes the PHY's sink from an RGB+sync layout to three
+character fields (`legacy/deps/litevideo/litevideo/output/common.py:40-44`) —
+`c0` and `c1` are 10 bits, `c2` is 11 bits — and
 bypasses the TMDS encoders entirely:
 
 ```python
@@ -557,11 +558,15 @@ sequence: unmask the HDCP interrupt, read the snooped Aksv/Bksv over the CSR
 window, compute Km, write it and set `Km_valid`. See
 [firmware.md](firmware.md).
 
+The modernised HDCP **receiver** design (new work, not part of the 2019
+gateware) is specified in
+[../superpowers/specs/2026-09-06-hdcp-receiver-design.md](../superpowers/specs/2026-09-06-hdcp-receiver-design.md).
+
 ## 4. TERC4 decoding and the data-island counters
 
 `DecodeTERC4` (`legacy/deps/litevideo/litevideo/input/decoding.py:184-375`) is
 instantiated inside `HDMIIn` whenever `hdmi=True`, renamed into the `pix`
-domain. It runs a seven-state FSM over the three channels' decoded control
+domain. It runs an eight-state FSM over the three channels' decoded control
 values — `INIT`, `PREAM_T4`, `GOING_T4`, `TERC4`, `LEAVE_T4`, `PREAM_VID`,
 `GOING_VID`, `VIDEO` — driven by the preamble CTL codes (`0b0101` for a data
 island, `0b0001` for video), the data guard band on channels 1 and 2, and the
@@ -720,10 +725,12 @@ from input pad to output pad is the capture SERDES plus 7 pixel clocks.
 
 ## 6. Resource footprint
 
-Unknown. There is no `legacy/build/` directory in this repository and no
-Vivado utilisation or timing report was archived alongside the shipped
-bitstreams — `legacy/production-images/` and `legacy/testing-images/` contain
-only `.bit` and `.bin` files. The only quantitative hints in the source are
+Utilisation and timing for the 2019 design are now recorded in
+[rebuild-2019.md](rebuild-2019.md) (placed and routed on Vivado 2025.2: BRAM
+95%, LUT 73.6%, post-route WNS -7.5 ns). No Vivado utilisation or timing
+report was archived alongside the shipped bitstreams —
+`legacy/production-images/` and `legacy/testing-images/` contain only `.bit`
+and `.bin` files. The only quantitative hints in the source are
 comments: that the input1 FIFO cannot usefully shrink below 512 because of BRAM
 granularity (`legacy/netv2mvp.py:897-900`), that the output FIFO needs 4096 to
 avoid tearing (`legacy/netv2mvp.py:982-983`), and that the LiteScope analyzer

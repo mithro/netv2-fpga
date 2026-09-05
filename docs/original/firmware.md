@@ -122,7 +122,7 @@ void ci_prompt(void)
 ```
 
 Note there is no newline and no trailing space: the exact prompt string is
-`RUNTIME>`. A line whose first token starts with `dummy` (`ci.c:774`) suppresses
+`RUNTIME>`. A line whose first token starts with `dummy` (`ci.c:772`) suppresses
 the prompt reprint (`ci.c:1176-1178`); this is how the internal no-input path
 avoids spamming prompts.
 
@@ -143,7 +143,7 @@ whose output the modern firmware must reproduce byte for byte.
 | `mw <addr> <val> <count>` | `ci.c:802` | arbitrary 32-bit write anywhere in the address map (`dump.c:81`) | **forbidden on the golden unit** |
 | `mc <dst> <src> <count>` | `ci.c:803` | memory copy (`dump.c:115`) | **forbidden on the golden unit** |
 | `video_matrix list` | `ci.c:806-808` | lists sinks and sources (`video_matrix_list`, `ci.c:472`) | frozen |
-| `video_matrix connect <src> <sink>` | `ci.c:809-847` | sources `input0`/`input1`/`pattern`, sinks `output0`/`output1`/`encoder`; unknown names print `Unknown video source: '%s'` / `Unknown video sink: '%s'` (`ci.c:825`, `:840`) and fall back to `help_video_matrix()` | |
+| `video_matrix connect <src> <sink>` | `ci.c:809-847` | sources `input0`/`input1`/`pattern`, sinks `output0`/`output1`/`encoder`; unknown names print `Unknown video source: '%s'` / `Unknown video sink: '%s'` (`ci.c:825`, `:841`) and fall back to `help_video_matrix()` | |
 | `video_mode list` | `ci.c:853-854` | lists the modes (`video_mode_list`, `ci.c:532`) | frozen |
 | `video_mode <n>` | `ci.c:856` | `video_mode_set(atoi(token))` (`ci.c:544`) | frozen |
 | `hdp_toggle <src>` | `ci.c:858-861` | prints `Toggling HDP on output%d` then drops and re-raises `edid_hpd_en` on that input across a 65,536-iteration busy loop (`ci.c:555-579`) — note the message says "output" for what is an input | frozen |
@@ -214,7 +214,7 @@ command always takes the `else` branch (`interlace = 3`).
 | anything else | `ci.c:1169-1170` | `help_debug()` | |
 
 That is **24 top-level commands** (the 24 first-token `strcmp` tests in the
-main chain, plus the `strncmp` on `dummy` at `ci.c:774`) and **36 `debug`
+main chain, plus the `strncmp` on `dummy` at `ci.c:772`) and **36 `debug`
 sub-commands**, 60 in total. Several top-level commands take a second token of
 their own (`list`, `connect`, `on`, `off`), which the tables above break out as
 separate rows.

@@ -6,6 +6,7 @@
 *.swp
 *.swo
 build
+legacy/build/
 .env
 .vscode
 test/analyzer.csv
