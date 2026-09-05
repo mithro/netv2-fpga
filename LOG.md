@@ -348,3 +348,20 @@ agent's colour-bar + grey-ramp test pattern with the overlay keyed on top
 Implication for the suite: the capture path must reset the card at start,
 measure the capture **duty cycle** as an explicit health metric, and select
 signal-bearing frames from a burst rather than assuming every frame is valid.
+
+### 20:30 — Test suite built and running
+
+Built the full suite under `netv2test/` (see `docs/TEST-SUITE-DESIGN.md` and
+`RESOURCES.md` for the layout) plus the rpiz-3 source agent under `agent/`.
+Framework distinguishes PASS / FAIL / **BLOCKED** (MS2109 gave no usable frame
+in budget — a capture-card limitation, not a NeTV2 fault) / SKIP (documented
+gaps). `run_all.py` resets the capture card, brings the chain up, runs T01-T23
++ T90, writes `reports/<ts>/report.{json,md}` and evidence PPMs, and exits
+non-zero only on a FAIL.
+
+Non-capture tests (console/lock/edid/hpd/video_matrix/thermal/json) all PASS in
+isolation. T04 locks in ~2 s (CEA-mode fix). The MS2109 duty cycle is the main
+limiter for capture-based tests; the framework tolerates it by selecting
+signal-bearing frames from bursts and marking a test BLOCKED (not FAIL) if none
+arrive. A wedged MS2109 can block a V4L2 ioctl, so `run_all` USB-re-enumerates
+the card at the start of every run.
