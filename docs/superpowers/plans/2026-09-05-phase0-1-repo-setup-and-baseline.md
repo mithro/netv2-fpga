@@ -19,6 +19,8 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_011SpK83e5d2zTn8CiPTKRTt
 ```
 
+**Hooks active in this environment (commands violating them are denied):** no `python -c`/`python3 -c` (write a script file and run it); heredocs must use a single-quoted delimiter (`<<'EOF'`), and a Bash command whose text merely contains an unquoted `<<EOF` is also denied; never `2>/dev/null`; never create files under `/tmp/` (use `/home/tim/github/AlphamaxMedia/tmp/`); never `git push --force`; commits with very many files may be refused, so split the `legacy/` move commit by directory if that happens.
+
 Work happens on branch `phase0-repo-setup` (tasks 1 to 9) and `phase1-baseline` (tasks 10 to 15), each branched from `modern` and merged back with `--no-ff` after the four-direction review (spec section 4.8). Working directory for all commands: `/home/tim/github/AlphamaxMedia/netv2-fpga`.
 
 ---
