@@ -42,3 +42,19 @@ in the sections below.
      - Driver work items (vc4 + drm_hdcp helpers)
      - Overall feasibility verdict + effort estimate + risks
 -->
+
+## Silicon — HDMI register mapping observed on rpiz-3
+
+From `/proc/iomem` (the ranges Linux/vc4 actually claimed):
+
+```
+20902000-209025ff : 20902000.hdmi hdmi   # HDMI CORE registers, 0x600 bytes
+20808000-208080ff : 20902000.hdmi hd     # HDMI "HD" block,     0x100 bytes
+```
+
+- ARM-physical `0x20902000` == VideoCore bus `0x7e902000` (the documented HDMI base).
+- vc4 maps only **0x600** of HDMI-core space. This is the range the *driver* requested, not
+  necessarily the physical extent of the Broadcom HDMI IP. **Open question for the register
+  research:** does the HDMI block physically extend beyond `0x209025ff` with an HDCP cipher /
+  key-RAM region at higher offsets that Linux simply never maps (and that `/dev/mem` could
+  still reach)? No device-tree node advertises `hdcp`.
