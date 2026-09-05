@@ -40,6 +40,17 @@ An (snooped or 0), Km (loaded via CSR), Km_valid=1, and a cipher-init trigger
 An=0 suffice -- no master key, no real HDCP display. Full register field map +
 controlled encrypt->decrypt plan recorded in hdcp/REGISTERS.md.
 
+### Step 4 (IN PROGRESS) — Pi encryption not yet engaging
+Register interface fully works: key loader accepts writes, BKSV validates
+(O_BKSV_VALID), auth status forces to AUTHENTICATED_OK via I_SET_RDB_AUTHENTICATED,
+AUTH_REQUEST generates An. BUT captured video stays clean and CP_INTEGRITY (Ri) is
+static >5s -> the cipher is not running and no encryption-status signaling (EESS,
+ctl_code=1001 at vsync) is emitted. The NeTV2 decoder (hdcp_mod.v) syncs on that
+EESS marker, so the Pi must put its SCHEDULER/ENCODER into HDCP-encrypt mode (run
+cipher + insert EESS), not merely set the authenticated status bit. Resolving the
+exact Broadcom scheduler/encoder encryption-enable sequence (bhdm_hdcp.c) is the
+current blocker. Pi reverted to clean baseline between experiments.
+
 ## Next steps
 - Step 2: key-loader write/DONE handshake (load a key index, no encryption) — mechanism check.
 - Step 3: read the downstream HDCP receiver (NeTV2 / capture path) BKSV over DDC 0x74; confirm
