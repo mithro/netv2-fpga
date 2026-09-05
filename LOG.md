@@ -18,6 +18,26 @@ done, what was measured, and what is still open.
   df02245 and the phase 1 merge; nothing was built from them.
 - Phase 1 tasks 10, 11, 12 (docs), 13 (baseline run) and 15 (2019 rebuild) run in
   parallel without committing; the controller commits. Task 14 follows 13.
+- Phase 1 complete on `phase1-baseline`: eight `docs/original/` pages, the
+  baseline suite report (29/0/3), EDID+console audio evidence, and the 2019
+  rebuild. Rebuild findings: the 2019 design regenerates and synthesises on
+  Vivado 2025.2 but fails timing by ~7.5 ns post-route and fills the 35T (BRAM
+  95%, MMCM 4/5); firmware on the golden unit predates `debug t4i/t4d`; the
+  MS2109 EDID advertises audio so EDID does not explain the T23 silence. These
+  drive phase 2/3 (the modern LiteX port is the path, not patching 2019; the
+  per-part feature matrix D36 matters because the 35T is nearly full).
+- HDCP receiver work (inserted as higher priority per Tim, via the RPi-side
+  coordinator): a Python HDCP 1.4 cipher reference model (bit-exact vs the spec
+  Appendix A and vs bunnie's Verilog in xsim) and the receiver design spec landed
+  on this branch as non-hardware groundwork; the receiver spec is under review;
+  RTL follows on a dedicated branch off `modern`. Key finding relayed to the RPi
+  side: `hdcp_mod.v` re-encrypts the overlay, it does not decrypt the
+  passthrough, so DoD 3 (clean decode) is new gateware, separate from the
+  receiver (DoD 1+2). Shared closed-loop keys verified (Km 0xf26625c3367e6e); no
+  real device keys used; key .bin files never committed.
+- Two `git submodule` commands issued to the rebuild agent were blocked by the
+  auto-mode classifier; the agent found `sync` was unnecessary and used
+  single-path `update --init`, which was allowed.
 - User instruction: created `mithro/netv2-testsuite` (public) with the GitHub.md
   settings; pushed the ten64 suite history (65 commits, `main` at c30a0af, tag
   `v0.0` on the root commit); ten64's `~/github/mithro/netv2` now tracks it. The
