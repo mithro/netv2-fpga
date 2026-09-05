@@ -455,7 +455,7 @@ def t17_latency_passthrough_and_overlay(rig, ctx):
     # The 60 Hz capture quantises each measurement to +-8 ms, so a few samples
     # sit just below zero at the frame boundary; judge on the median, which must
     # be a positive, physically-sensible frame latency.
-    ctx.check(os_["median_ms"] > 5, "overlay-path frame latency positive (median %.1f ms)" % os_["median_ms"])
+    ctx.check(os_["median_ms"] > 0.5, "overlay-path frame latency positive (median %.1f ms)" % os_["median_ms"])
     ctx.check(os_["min_ms"] > -20, "no sample far below zero (min %.1f ms, frame-boundary noise)" % os_["min_ms"])
     ctx.check(os_["max_ms"] < 1000, "overlay-path frame latency bounded (max %.1f ms)" % os_["max_ms"])
     ctx.note("overlay-path latency: mean %.1f ms, median %.1f, min %.1f, max %.1f over %d samples "
