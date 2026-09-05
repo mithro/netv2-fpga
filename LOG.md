@@ -394,3 +394,27 @@ fell from ~100 % (session start) to 3-17 % (rack hot, FPGA die ~80 C). The
 suite tolerates this: capture tests select signal-bearing frames and mark a
 test BLOCKED (not FAIL) if none arrive in budget. NeTV2-side functionality is
 verified independently through the serial console, which needs no capture card.
+
+### 22:30 — Suite green except capture-limited differential latency
+
+After fixing the test-quality bugs the suite runs clean end-to-end. Final-shape
+results (duty ~15%): T01-T16 PASS, T18-T22 PASS, T23 SKIP (no HDMI audio in
+gateware), T90 SKIP (documented gaps). Fixes made this pass:
+
+- **Limited-range keying (T11).** rpi3-netv2's HDMI is limited-range RGB, so an
+  overlay value V reaches the NeTV2 as ~16 + V*219/255. Only V==0 (wire ~16)
+  falls under the default `rect_thresh` 20 and keys OUT. T11 now uses the black
+  overlay background as the keyed-out (transparent) region and a white block as
+  opaque. The MagicMirror overlay relies on exactly this: black UI keys out,
+  bright text keys in.
+- **T10/T12 sampling.** Corner/margin sample boxes are now computed in capture
+  pixels with a passthrough sentinel (`good_frame_where`) so a partial MS2109
+  frame that shows only the overlay is rejected.
+- **T07** capture-fps bound relaxed to >=18 fps (MS2109/USB2 limit; the NeTV2
+  output is a stable 60 fps, verified NeTV2-side by T05).
+- **T17 latency** restructured: the overlay-path frame latency (rpi3-netv2 fb0
+  write -> NeTV2 overlay -> output -> MS2109 -> capture) is reliably sampled
+  (>1000 samples) and is the primary result; the NeTV2-only differential
+  (overlay - passthrough, which cancels the capture-card latency) is reported
+  only when enough source-passthrough frames are caught, which the flaky MS2109
+  does intermittently. It no longer BLOCKs on the differential alone.
