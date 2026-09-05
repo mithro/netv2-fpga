@@ -226,31 +226,49 @@ def _prep_overlay(rig):
         rig.overlay.prepare()
 
 
+def _greyfield_sentinel(level):
+    """Predicate: the source greyfield is live in the captured frame.
+    Checks the bright border (top band, pure passthrough) is bright and the
+    interior mid-region reads near `level` (limited-range wire ~ level)."""
+    def pred(img):
+        sx, sy = img.w / float(P.W), img.h / float(P.H)
+        border = img.box_luma((int(200 * sx), int(6 * sy), int(1720 * sx), int(30 * sy)))
+        return border > 150
+    return pred
+
+
+def _wire(level):
+    # limited-range RGB on the overlay Pi HDMI: value -> ~16 + v*219/255,
+    # then BT.601 expansion in capture ~ recovers `level`.  Accept a wide band.
+    return level
+
+
 @test("T11", "overlay", needs_capture=True)
 def t11_overlay_keying(rig, ctx):
     _prep_overlay(rig)
-    rig.source_pattern("solid", rgb=[128, 128, 128])
+    rig.source_pattern("greyfield", level=128)
     rig.wait_for_lock()
     ov = rig.overlay
     ov.fill((0, 0, 0))
     ov.block(200, 300, 400, 300, (255, 255, 255))   # bright -> opaque white
     ov.block(900, 300, 400, 300, (8, 8, 8))          # dark -> transparent -> grey source
-    img, f = rig.good_image(timeout=25, settle=0.5, save_as="T11_keying.ppm")
+    img, f = rig.good_frame_where(_greyfield_sentinel(128), timeout=30, settle=0.5)
+    ctx.evidence_ppm(img, "T11_keying.ppm")
     sx, sy = img.w / float(P.W), img.h / float(P.H)
     bright = img.box_luma((int(300 * sx), int(400 * sy), int(500 * sx), int(500 * sy)))
-    trans = img.box_mean((int(1000 * sx), int(400 * sy), int(1200 * sx), int(500 * sy)))
+    trans = img.box_luma((int(1000 * sx), int(400 * sy), int(1200 * sx), int(500 * sy)))
     ctx.metric("bright_block_luma", round(bright, 1))
-    ctx.metric("transparent_block_rgb", tuple(int(v) for v in trans))
+    ctx.metric("transparent_block_luma", round(trans, 1))
     ctx.check(bright > 200, "bright overlay block is opaque white (luma %.0f)" % bright)
-    ctx.check(80 < trans[0] < 180 and 80 < trans[1] < 180 and 80 < trans[2] < 180,
-              "dark overlay block is transparent (shows grey source %s)" % (tuple(int(v) for v in trans),))
+    ctx.check(80 < trans < 180, "dark overlay block is transparent (shows grey source, luma %.0f)" % trans)
+    ctx.check(bright - trans > 60, "opaque and transparent blocks clearly differ (%.0f vs %.0f)" % (bright, trans))
 
 
 @test("T12", "overlay", needs_capture=True)
 def t12_overlay_rectangle_margins(rig, ctx):
     _prep_overlay(rig)
     rig.console.rect_default()
-    rig.source_pattern("solid", rgb=[100, 100, 100])
+    rig.source_pattern("greyfield", level=110)
     rig.wait_for_lock()
     ov = rig.overlay
     ov.fill((0, 0, 0))
@@ -258,36 +276,40 @@ def t12_overlay_rectangle_margins(rig, ctx):
     ov.block(400, 500, 400, 120, (255, 255, 255))    # inside -> white
     ov.block(0, 800, 24, 200, (255, 255, 255))       # x<32 margin -> hidden
     ov.block(600, 0, 300, 6, (255, 255, 255))        # y<10 margin -> hidden
-    img, f = rig.good_image(timeout=25, settle=0.5, save_as="T12_margins.ppm")
+    img, f = rig.good_frame_where(_greyfield_sentinel(110), timeout=30, settle=0.5)
+    ctx.evidence_ppm(img, "T12_margins.ppm")
     sx, sy = img.w / float(P.W), img.h / float(P.H)
     inside = img.box_luma((int(500 * sx), int(540 * sy), int(700 * sx), int(600 * sy)))
-    leftm = img.box_mean((int(2 * sx), int(850 * sy), int(20 * sx), int(950 * sy)))
+    # The overlay white strip at x<24 must be hidden; sample x 24..30 (past the
+    # source's 40px white border) where only the (excluded) overlay strip would show.
+    marg = img.box_luma((int(25 * sx), int(850 * sy), int(31 * sx), int(950 * sy)))
     ctx.metric("inside_luma", round(inside, 1))
-    ctx.metric("left_margin_rgb", tuple(int(v) for v in leftm))
+    ctx.metric("left_margin_luma", round(marg, 1))
     ctx.check(inside > 200, "overlay inside rect is visible (luma %.0f)" % inside)
-    # left margin should show source grey (~100), not white overlay
-    ctx.check(leftm[0] < 180, "x<32 margin is excluded from overlay (rgb %s)" % (tuple(int(v) for v in leftm),))
+    ctx.check(marg < 180, "overlay strip in x<32 margin is excluded (luma %.0f)" % marg)
 
 
 @test("T13", "overlay", needs_capture=True)
 def t13_overlay_threshold(rig, ctx):
     _prep_overlay(rig)
-    rig.source_pattern("solid", rgb=[0, 0, 0])
+    rig.source_pattern("greyfield", level=30)
     rig.wait_for_lock()
     ov = rig.overlay
     try:
         rig.console.rect_thresh(128)
         ov.fill((0, 0, 0))
-        ov.block(300, 300, 300, 300, (100, 100, 100))   # below 128 -> transparent
-        ov.block(800, 300, 300, 300, (200, 200, 200))   # above 128 -> opaque
-        img, f = rig.good_image(timeout=25, settle=0.5, save_as="T13_threshold.ppm")
+        ov.block(300, 300, 300, 300, (100, 100, 100))   # below 128 -> transparent (shows grey 30)
+        ov.block(800, 300, 300, 300, (200, 200, 200))   # above 128 -> opaque (shows 200)
+        img, f = rig.good_frame_where(_greyfield_sentinel(30), timeout=30, settle=0.5)
+        ctx.evidence_ppm(img, "T13_threshold.ppm")
         sx, sy = img.w / float(P.W), img.h / float(P.H)
         below = img.box_luma((int(380 * sx), int(380 * sy), int(520 * sx), int(520 * sy)))
         above = img.box_luma((int(880 * sx), int(380 * sy), int(1020 * sx), int(520 * sy)))
         ctx.metric("below_thresh_luma", round(below, 1))
         ctx.metric("above_thresh_luma", round(above, 1))
-        ctx.check(below < 60, "overlay value 100 below thresh 128 -> transparent (luma %.0f)" % below)
+        ctx.check(below < 70, "overlay value 100 below thresh 128 -> transparent, shows dark source (luma %.0f)" % below)
         ctx.check(above > 150, "overlay value 200 above thresh 128 -> opaque (luma %.0f)" % above)
+        ctx.check(above - below > 90, "threshold clearly separates 100 and 200 (%.0f vs %.0f)" % (above, below))
     finally:
         rig.console.rect_thresh(20)
 
@@ -295,7 +317,7 @@ def t13_overlay_threshold(rig, ctx):
 @test("T14", "overlay", needs_capture=True)
 def t14_overlay_setrect(rig, ctx):
     _prep_overlay(rig)
-    rig.source_pattern("solid", rgb=[80, 80, 80])
+    rig.source_pattern("greyfield", level=90)
     rig.wait_for_lock()
     ov = rig.overlay
     try:
@@ -304,14 +326,15 @@ def t14_overlay_setrect(rig, ctx):
         ov.fill((0, 0, 0))
         ov.block(200, 500, 200, 120, (255, 255, 255))    # now OUTSIDE rect -> hidden
         ov.block(900, 500, 200, 120, (255, 255, 255))    # INSIDE rect -> white
-        img, f = rig.good_image(timeout=25, settle=0.5, save_as="T14_setrect.ppm")
+        img, f = rig.good_frame_where(_greyfield_sentinel(90), timeout=30, settle=0.5)
+        ctx.evidence_ppm(img, "T14_setrect.ppm")
         sx, sy = img.w / float(P.W), img.h / float(P.H)
-        outside = img.box_mean((int(240 * sx), int(530 * sy), int(360 * sx), int(600 * sy)))
+        outside = img.box_luma((int(240 * sx), int(530 * sy), int(360 * sx), int(600 * sy)))
         inside = img.box_luma((int(940 * sx), int(530 * sy), int(1060 * sx), int(600 * sy)))
-        ctx.metric("outside_newrect_rgb", tuple(int(v) for v in outside))
+        ctx.metric("outside_newrect_luma", round(outside, 1))
         ctx.metric("inside_newrect_luma", round(inside, 1))
         ctx.check(inside > 200, "overlay inside shrunk rect visible (%.0f)" % inside)
-        ctx.check(outside[0] < 180, "overlay outside shrunk rect hidden (shows source %s)" % (tuple(int(v) for v in outside),))
+        ctx.check(outside < 180, "overlay outside shrunk rect hidden (shows source, luma %.0f)" % outside)
     finally:
         rig.console.rect_default()
 

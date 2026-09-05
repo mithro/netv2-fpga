@@ -139,6 +139,29 @@ class Rig(object):
                 return f
         raise LockTimeout("no signal-bearing frame within %.0fs" % timeout)
 
+    def good_frame_where(self, predicate, timeout=25.0, settle=0.0):
+        """Return the next signal-bearing frame for which predicate(Image) is
+        True.  Used by overlay tests to require live source passthrough (a
+        sentinel) before evaluating overlay regions, so a frame where only the
+        opaque overlay is present is rejected."""
+        t_min = time.monotonic() + settle
+        deadline = time.monotonic() + timeout + settle
+        while time.monotonic() < deadline:
+            try:
+                f = self.cap.latest(min_timestamp=t_min, timeout=min(2.0, max(0.1, deadline - time.monotonic())))
+            except RuntimeError:
+                continue
+            t_min = f.timestamp
+            if not self.frame_is_signal(f):
+                continue
+            try:
+                img = frame_to_image(f)
+            except CaptureError:
+                continue
+            if predicate(img):
+                return img, f
+        raise LockTimeout("no frame satisfying passthrough sentinel within %.0fs" % timeout)
+
     def good_image(self, timeout=20.0, settle=0.0, save_as=None):
         f = self.good_frame(timeout=timeout, settle=settle)
         img = frame_to_image(f)

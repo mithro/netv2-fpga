@@ -196,6 +196,18 @@ class Display:
         elif name == "strip":
             self.draw_solid(a, params.get("rgb_bg", [0, 0, 0]))
             self.draw_strip(a, P.SRC_STRIP_Y, int(params.get("counter", 0)))
+        elif name == "greyfield":
+            # Uniform grey with a bright border: the border gives the NeTV2
+            # resolution detector active-video edges AND serves as a passthrough
+            # sentinel for the overlay tests (a bright band the test can require
+            # to be present, proving the source is live behind the overlay).
+            lvl = int(params.get("level", 128))
+            self.draw_solid(a, [lvl, lvl, lvl])
+            b = 40
+            a[0:b, :] = 0x00FFFFFF
+            a[self.h - b:self.h, :] = 0x00FFFFFF
+            a[:, 0:b] = 0x00FFFFFF
+            a[:, self.w - b:self.w] = 0x00FFFFFF
         else:
             raise RuntimeError("unknown pattern " + name)
         self.pattern = name
