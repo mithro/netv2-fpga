@@ -117,6 +117,14 @@ class Display:
             a[:, :] = 0
         self.w, self.h, self.mode = w, h, m
         self.front = 0
+        # Force a full teardown before the modeset so vc4 re-emits the AVI
+        # InfoFrame (a plain re-set of an unchanged mode can skip it, leaving
+        # the NeTV2 resolution detector reading 0x0 even though the link locks).
+        try:
+            self.crtc.disable_mode()
+            time.sleep(0.15)
+        except Exception:  # noqa: BLE001
+            pass
         self.crtc.set_mode(self.conn, self.fbs[0], m)
         self.enabled = True
         self.flip_pending = False
