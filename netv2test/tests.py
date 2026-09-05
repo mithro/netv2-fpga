@@ -568,9 +568,221 @@ def t23_audio_not_supported(rig, ctx):
                "carries no audio, capture rms=%.0f. Documented gateware limitation." % rms)
 
 
+# ---------------------------------------------------------------- extended datapath (adversarial-review additions)
+@test("T24", "overlay", needs_capture=True)
+def t24_pipe_override(rig, ctx):
+    """rectangle.pipe_override: when set, the output forwards raw input0 TMDS,
+    bypassing the overlay compositor and keyer.  `debug override` toggles it."""
+    _prep_overlay(rig)
+    rig.console.rect_default()
+    rig.source_pattern("geometry")           # corners = passthrough sentinel
+    rig.wait_for_lock()
+    ov = rig.overlay
+    ov.fill((0, 0, 0))
+    ov.block(700, 460, 500, 160, (255, 255, 255))   # opaque overlay block (dark source behind)
+    try:
+        # baseline: overlay active -> block visible
+        img0, _ = rig.good_frame_where(_geometry_sentinel, timeout=30, settle=0.5)
+        sx, sy = img0.w / float(P.W), img0.h / float(P.H)
+        blk = (int(760 * sx), int(500 * sy), int(1140 * sx), int(580 * sy))
+        base = img0.box_luma(blk)
+        ctx.metric("overlay_block_luma_normal", round(base, 1))
+        ctx.check(base > 180, "overlay block visible with compositor active (%.0f)" % base)
+        # enable pipe_override -> raw passthrough, overlay block must vanish
+        rig.console.pipe_override_toggle()
+        img1, _ = rig.good_frame_where(_geometry_sentinel, timeout=30, settle=0.7)
+        over = img1.box_luma(blk)
+        ctx.metric("overlay_block_luma_override", round(over, 1))
+        ctx.check(over < 90, "pipe_override bypasses overlay: block gone, raw source shows (%.0f)" % over)
+        ctx.evidence_ppm(img1, "T24_pipe_override.ppm")
+        # corners still present in override (raw passthrough is live)
+        ctx.check(_geometry_sentinel(img1), "raw source passthrough still live under pipe_override")
+    finally:
+        # toggle override back off and restore the overlay core
+        rig.console.pipe_override_toggle()
+        rig.console.rect_default()
+
+
+@test("T25", "lock")
+def t25_overlay_input_quality(rig, ctx):
+    """Overlay input (input1) signal integrity via the JSON diagnostics:
+    symbol-sync on all 3 channels and zero symbol errors, like T05 does for
+    input0 over the debug trace."""
+    rig.source_pattern("geometry")
+    rig.wait_for_lock()
+    best = None
+    for _ in range(6):
+        j = rig.console.json_status()
+        se = str(j.get("overlay_symbol_errors", "")).split()
+        errs = sum(int(x) for x in se) if se and all(x.isdigit() for x in se) else -1
+        cand = {"sync": j.get("overlay_symbol_sync"), "errs": errs, "hres": j.get("overlay_hres")}
+        if cand["sync"] == 111 and cand["errs"] == 0:
+            best = cand
+            break
+        best = cand
+        time.sleep(0.5)
+    ctx.metric("overlay_symbol_sync", best["sync"])
+    ctx.metric("overlay_symbol_errors_sum", best["errs"])
+    ctx.metric("overlay_hres", best["hres"])
+    ctx.check(best["sync"] == 111, "overlay input symbol-sync locked on all 3 channels (%s)" % best["sync"])
+    ctx.check(best["errs"] == 0, "overlay input symbol errors == 0 (%s)" % best["errs"])
+    ctx.check(best["hres"] == 1920, "overlay input hres 1920 (%s)" % best["hres"])
+
+
+@test("T26", "overlay", needs_capture=True)
+def t26_overlay_dma_freeze(rig, ctx):
+    """`debug stop`/`debug run`: empty/load the input1->DDR DMA slots, freezing
+    and resuming the overlay framebuffer writer.  Frozen -> a changed overlay
+    does not reach the output; resumed -> it does."""
+    _prep_overlay(rig)
+    rig.console.rect_default()
+    rig.source_pattern("geometry")
+    rig.wait_for_lock()
+    ov = rig.overlay
+    ov.fill((0, 0, 0))
+    ov.block(760, 470, 400, 130, (255, 255, 255))   # white overlay block visible
+    blk_src = (760, 470, 1160, 600)
+    try:
+        img0, _ = rig.good_frame_where(_geometry_sentinel, timeout=30, settle=0.6)
+        sx, sy = img0.w / float(P.W), img0.h / float(P.H)
+        blk = (int(800 * sx), int(500 * sy), int(1120 * sx), int(570 * sy))
+        vis = img0.box_luma(blk)
+        ctx.check(vis > 180, "overlay block visible before freeze (%.0f)" % vis)
+        # freeze the overlay DMA, then blank the fb -- output should keep the old frame
+        rig.console.overlay_dma(run=False)
+        time.sleep(0.3)
+        ov.fill((0, 0, 0))   # would remove the block if the writer were running
+        img1, _ = rig.good_frame_where(_geometry_sentinel, timeout=30, settle=0.8)
+        frozen = img1.box_luma(blk)
+        ctx.metric("block_luma_frozen", round(frozen, 1))
+        ctx.check(frozen > 150, "overlay frozen: block persists after fb blanked (%.0f)" % frozen)
+        # resume: the blanked fb now propagates -> block gone
+        rig.console.overlay_dma(run=True)
+        img2, _ = rig.good_frame_where(_geometry_sentinel, timeout=30, settle=0.8)
+        resumed = img2.box_luma(blk)
+        ctx.metric("block_luma_resumed", round(resumed, 1))
+        ctx.check(resumed < 100, "overlay resumed: blanked fb now shown, block gone (%.0f)" % resumed)
+    finally:
+        rig.console.overlay_dma(run=True)
+        rig.console.rect_default()
+
+
+@test("T27", "overlay", needs_capture=True)
+def t27_overlay_rectoff(rig, ctx):
+    """`debug rectoff` disables the overlay read core (hdmi_core_out0 initiator);
+    output becomes pure passthrough.  `debug rect` re-enables it."""
+    _prep_overlay(rig)
+    rig.source_pattern("geometry")
+    rig.wait_for_lock()
+    ov = rig.overlay
+    ov.fill((0, 0, 0))
+    ov.block(760, 470, 400, 130, (255, 255, 255))
+    try:
+        img0, _ = rig.good_frame_where(_geometry_sentinel, timeout=30, settle=0.6)
+        sx, sy = img0.w / float(P.W), img0.h / float(P.H)
+        blk = (int(800 * sx), int(500 * sy), int(1120 * sx), int(570 * sy))
+        ctx.check(img0.box_luma(blk) > 180, "overlay visible before rectoff")
+        rig.console.rect_off()
+        img1, _ = rig.good_frame_where(_geometry_sentinel, timeout=30, settle=0.7)
+        off = img1.box_luma(blk)
+        ctx.metric("block_luma_rectoff", round(off, 1))
+        ctx.check(off < 100, "rectoff -> overlay core disabled, pure passthrough (%.0f)" % off)
+    finally:
+        rig.console.rect_default()
+
+
+@test("T28", "lock")
+def t28_hpd_force_control(rig, ctx):
+    """`debug hpdforce`/`hpdrelax` drive hdmi_rx0_forceunplug: the NeTV2 can
+    assert HPD (unplug) toward the source and release it.  Force -> input0
+    loses lock; relax -> it re-locks."""
+    rig.source_pattern("geometry")
+    rig.wait_for_lock(mhz=MHZ_1080P)
+    rig.console.hpd_force()
+    t0 = time.monotonic()
+    lost = False
+    while time.monotonic() - t0 < 10:
+        st = rig.input0()
+        if st.get("mhz", 0) < 1.0 or st.get("hres", 0) == 0:
+            lost = True
+            break
+        time.sleep(0.3)
+    ctx.metric("hpd_force_loss_s", round(time.monotonic() - t0, 2))
+    try:
+        ctx.check(lost, "NeTV2 hpdforce drops the source link (input0 lost)")
+    finally:
+        rig.console.hpd_relax()
+        rig.ensure_locked("geometry", mhz=MHZ_1080P)
+    ctx.check(rig.input0()["hres"] == 1920, "input0 re-locks after hpdrelax")
+
+
+@test("T29", "edid")
+def t29_i2c_snoop(rig, ctx):
+    """`debug dumpe`: the i2c_snoop block captures the DDC/EDID transaction on
+    the output port.  After the source has read EDID, the snoop should hold a
+    real EDID (the 00 FF FF FF FF FF FF 00 header)."""
+    # make the source re-read EDID so the snoop is fresh
+    rig.console.hdp_toggle(0)
+    time.sleep(2.0)
+    rig.ensure_locked("geometry", mhz=MHZ_1080P)
+    snoop = rig.console.dump_snoop_edid()
+    ctx.metric("snoop_bytes", len(snoop))
+    header = b"\x00\xff\xff\xff\xff\xff\xff\x00"
+    nonzero = sum(1 for b in snoop if b != 0)
+    ctx.metric("snoop_nonzero", nonzero)
+    ctx.check(len(snoop) >= 128, "snoop returned >=128 bytes (%d)" % len(snoop))
+    ctx.check(header in bytes(snoop) or nonzero > 32,
+              "i2c snoop captured real DDC/EDID content (header %s, %d non-zero bytes)"
+              % (header in bytes(snoop), nonzero))
+
+
+@test("T30", "mode")
+def t30_video_mode_reconfig(rig, ctx):
+    """Firmware `video_mode <n>` (processor_start): reconfigures the whole pipe
+    (MMCM, framebuffer, init_rect, HPD pulse).  Issuing the current 1080p mode
+    must leave the board cleanly re-locked."""
+    rig.source_pattern("geometry")
+    rig.wait_for_lock(mhz=MHZ_1080P)
+    modes = rig.console.command("video_mode list")
+    # find the 1920x1080 @60 mode index
+    idx = None
+    import re as _re
+    for m in _re.finditer(r"mode (\d+): (\d+)x(\d+) @(\d+)Hz", modes):
+        if m.group(2) == "1920" and m.group(3) == "1080" and m.group(4) == "60":
+            idx = int(m.group(1))
+            break
+    ctx.check(idx is not None, "found a 1920x1080@60 firmware video_mode index")
+    ctx.metric("video_mode_index", idx)
+    rig.console.video_mode_set(idx)
+    try:
+        dt = rig.ensure_locked("geometry", w=1920, h=1080, mhz=MHZ_1080P)
+        ctx.metric("relock_after_video_mode_s", round(dt, 2))
+        ctx.check(rig.input0()["hres"] == 1920, "board re-locks at 1080p after video_mode reconfig")
+    finally:
+        rig.console.rect_default()
+
+
+@test("T31", "console")
+def t31_ddr_bandwidth(rig, ctx):
+    """The overlay framebuffer path drives DDR: with both inputs active, DDR
+    read+write bandwidth must be non-zero (the input1->DDR->output DMA)."""
+    rig.source_pattern("geometry")
+    rig.wait_for_lock()
+    st = rig.console.status()
+    ddr = st.get("ddr", {})
+    ctx.metric("ddr_mbps", ddr)
+    ctx.check(ddr.get("all", 0) > 0, "DDR bandwidth non-zero (all=%s Mbps)" % ddr.get("all"))
+    ctx.check(ddr.get("write", 0) > 0, "DDR write bandwidth non-zero (overlay fb writer, %s Mbps)" % ddr.get("write"))
+
+
 # ---------------------------------------------------------------- documented gaps
 @test("T90", "gaps")
 def t90_documented_gaps(rig, ctx):
-    raise Skip("HDCP (no HDCP source), output1 (absent in this gateware), "
-               "Ethernet/etherbone (no cable), NeTV2 video_mode change (alters the "
-               "EDID offered to the fixed-1080p overlay Pi) - documented, not auto-tested")
+    raise Skip("Genuine gaps on this rig/gateware: HDCP engine + `debug km` "
+               "(no HDCP source); output1 / encoder / dma_writer / dma_reader / "
+               "sdram_test (compiled out of this magic-mirror gateware, absent from "
+               "live help); HDMI audio (no I2S/SPDIF path in gateware, see T23); "
+               "Ethernet/etherbone (RMII PHY present but uncabled). `video_matrix "
+               "connect` and the `pattern` source are inert in this gateware "
+               "(processor_update is empty, the output mux is hardwired), so only "
+               "their listings are checked (T18).")

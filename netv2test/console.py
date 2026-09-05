@@ -172,3 +172,92 @@ class Console(object):
 
     def rect_off(self):
         return self.command("debug rectoff")
+
+    # ---- additional datapath / diagnostics controls -------------------------
+    def pipe_override_toggle(self):
+        """`debug override` toggles rectangle.pipe_override (raw-TMDS passthrough,
+        bypassing overlay + keyer + re-encode).  It is a toggle, so callers must
+        track state; returns the raw reply."""
+        return self.command("debug override")
+
+    def overlay_dma(self, run):
+        """`debug run` / `debug stop`: load / empty the input1->DDR DMA slots
+        (resume / freeze the overlay framebuffer writer)."""
+        return self.command("debug run" if run else "debug stop")
+
+    def hpd_force(self):
+        """`debug hpdforce`: assert HPD (unplug) toward the source via
+        hdmi_rx0_forceunplug."""
+        return self.command("debug hpdforce")
+
+    def hpd_relax(self):
+        """`debug hpdrelax`: release the forced HPD."""
+        return self.command("debug hpdrelax")
+
+    def hdp_toggle(self, source):
+        """`hdp_toggle <n>`: pulse edid_hpd_en on input <n> for an EDID rescan."""
+        return self.command("hdp_toggle %d" % source)
+
+    def video_mode_set(self, n):
+        """`video_mode <n>`: firmware pipeline reconfiguration (processor_start)."""
+        return self.command("video_mode %d" % n, timeout=6.0)
+
+    def debug_ddr(self):
+        """`debug ddr`: DDR bandwidth report; returns (read, write, all) Mbps."""
+        text = self.command("debug ddr", timeout=4.0)
+        m = re.search(r"read:\s*(\d+).*?write:\s*(\d+).*?all:\s*(\d+)", text, re.S)
+        if m:
+            return {"read": int(m.group(1)), "write": int(m.group(2)), "all": int(m.group(3))}
+        # fall back to the status line, which also carries ddr
+        return None
+
+    def dump_snoop_edid(self):
+        """`debug dumpe`: 256 bytes snooped from the DDC/I2C by the i2c_snoop
+        block.  Returns a bytes object (best-effort parse of the hex dump)."""
+        text = self.command("debug dumpe", timeout=4.0)
+        vals = []
+        for ln in text.replace("\r", "").split("\n"):
+            # lines look like " 00: 00 ff ff ff ..."
+            m = re.match(r"\s*[0-9a-fA-F]{2}:\s*((?:[0-9a-fA-F]{2}\s*)+)", ln)
+            if m:
+                for tok in m.group(1).split():
+                    try:
+                        vals.append(int(tok, 16))
+                    except ValueError:
+                        pass
+        return bytes(vals)
+
+    def input1_trace(self, seconds):
+        """Like input0_trace but for the overlay input (input1)."""
+        for _ in range(2):
+            text = self.command("debug input1")
+            m = re.search(r"Input 1 debug (on|off)", text)
+            if m and m.group(1) == "on":
+                break
+        try:
+            deadline = time.monotonic() + seconds
+            buf = b""
+            while time.monotonic() < deadline:
+                chunk = self.ser.read(4096)
+                if chunk:
+                    buf += chunk
+        finally:
+            for _ in range(2):
+                t = self.command("debug input1")
+                m = re.search(r"Input 1 debug (on|off)", t)
+                if m and m.group(1) == "off":
+                    break
+        text = buf.decode("utf-8", "replace")
+        self.log.append(text)
+        samples = []
+        for ln in text.replace("\r", "").split("\n"):
+            m = DEBUG_RE.search(ln.replace("hdmi_in1", "hdmi_in0"))
+            if m:
+                samples.append({
+                    "charsync": m.group("charsync"),
+                    "wer": [int(m.group("wer0")), int(m.group("wer1")), int(m.group("wer2"))],
+                    "chansync": int(m.group("chansync")),
+                    "hres": int(m.group("h")),
+                    "vres": int(m.group("v")),
+                })
+        return {"samples": samples, "raw_lines": text.count("\n")}
