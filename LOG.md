@@ -365,3 +365,32 @@ limiter for capture-based tests; the framework tolerates it by selecting
 signal-bearing frames from bursts and marking a test BLOCKED (not FAIL) if none
 arrive. A wedged MS2109 can block a V4L2 ioctl, so `run_all` USB-re-enumerates
 the card at the start of every run.
+
+### 21:30 — Two more root causes fixed in the suite
+
+**(a) Overlay keying false-fail (test bug).** T11 failed reading (15,15,15)
+where it expected grey source passthrough. Cause: `good_frame` accepted any
+frame with luma>20, but an opaque white overlay block satisfies that even in a
+frame where the source passthrough momentarily dropped (MS2109 caught a glitch
+frame). Fix: overlay tests use a new **greyfield** source pattern (uniform grey
++ bright border) and `good_frame_where(sentinel)` which only accepts a frame
+whose border sentinel proves the source is live behind the overlay. Confirmed
+solid-grey passthrough works (capture centre ~134 for source 128).
+
+**(b) Card USB reset disrupts the source lock.** `run_all` used to USB
+re-enumerate the MS2109 at start (to un-wedge it). But unbind/bind hard-drops
+HPD, which passes through the NeTV2 to rpiz-3 and leaves the source in a state
+where input0 locks cleanly (chansync 1, WER 0) yet resolution detection reads
+0x0. Proven: all three 1920x1080@60 modes carry a 17-byte AVI InfoFrame, and a
+clean `crtc.set_mode` on any of them gives `input0: 1920x1080`; the confusion
+is transient state after the hard HPD drop. Fixes: (1) the default run no longer
+resets the card (reset is now opt-in `--reset`, for a genuinely wedged card);
+(2) `rig.ensure_locked()` recovers a confused source by re-applying the CEA
+mode and redrawing the pattern, retrying a few times. After an agent restart
+with the stream up, greyfield/geometry/bars all resolution-detect (0-16 s).
+
+**MS2109 duty degradation.** Over the multi-hour session the capture duty cycle
+fell from ~100 % (session start) to 3-17 % (rack hot, FPGA die ~80 C). The
+suite tolerates this: capture tests select signal-bearing frames and mark a
+test BLOCKED (not FAIL) if none arrive in budget. NeTV2-side functionality is
+verified independently through the serial console, which needs no capture card.
