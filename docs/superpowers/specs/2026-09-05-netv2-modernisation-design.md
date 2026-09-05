@@ -31,7 +31,7 @@ reversible; anything marked **risky** is where a wrong guess costs the most.
 | 1 | LiteX-family deps whose fork network `mithro` already forks | AlphamaxMedia branches pushed into the existing `mithro/*` forks as `alphamax-<branch>` branches (done 2026-09-05). Modern build uses upstream releases, not these forks. |
 | 2 | Home for new work | `mithro/netv2-fpga`. `master` kept as the pristine AlphamaxMedia master; integration branch `modern`; feature branches merged into `modern` via PRs on the fork. |
 | 3 | Fork scope | All 23 org repos forked or branch-archived under `mithro` (done). |
-| 4 | Test suite repo | Creating a new GitHub repo was blocked by the permission classifier. The ten64 suite is merged into `mithro/netv2-fpga` under `tests/netv2test/` as a git subtree with history. The user can split it out later. |
+| 4 | Test suite repo | Creating a new GitHub repo was blocked by the permission classifier. The ten64 suite (already fetched as remote `ten64-testsuite/main` in this checkout) is merged into `mithro/netv2-fpga` under `tests/netv2test/` as a git subtree with history. The user can split it out later. |
 | 5 | ten64 `~/local/netv2` notes | Folded into `docs/` (Pi 5 programming notes). |
 | 6 | **risky** `rpi3-netv2` golden unit | Never re-imaged, never SPI-flashed. Volatile JTAG loads only, stock bitstream restored after every run. A netbooting fpgas.online Pi 3B+ node is the modern-OS Pi 3 target once access is sorted out. |
 | 7 | Netboot nodes | Unknown access path (tweed host key changed). Treated as a later-phase dependency; infra repos are read-only. |
@@ -41,7 +41,8 @@ reversible; anything marked **risky** is where a wrong guess costs the most.
 | 11 | NeTV2 RJ45 cabling | Unknown. Phase 8 checks link state first; if uncabled, the report says so and asks the user. |
 | 12 | HDMI audio scope | Staged: (1) data-island passthrough in overlay mode, (2) de-embed to DDR for the host, (3) embed host audio into the output. |
 | 13 | PCIe scope | Staged: (1) LitePCIe endpoint, driver on kernel 6.18, BAR access, DMA loopback; (2) host framebuffer to HDMI out; (3) capture to host if time permits. |
-| 14 | Ethernet control | Etherbone + `litex_server` + Python `netv2ctl` library + UDP JSON status from firmware. |
+| 14 | Ethernet control | Hardware Etherbone kept as a Wishbone master, plus a CPU-visible LiteEth MAC sharing the same RMII PHY and UDP crossbar (LiteX `add_etherbone(with_ethmac=True)`), so `litex_server` and firmware networking coexist. Firmware adds a UDP JSON status/command port on `libliteeth`. If the MAC does not fit the 35T alongside the video pipeline, the 35T build keeps Etherbone only and the report says so. |
+| 14b | Firmware delivery | The modern BIOS is built **without** `flash_boot_address`, so it can never jump into the stale 2018 firmware still in NOR. Firmware is delivered by LiteX serial boot (SFL) over the Pi UART at 115200 baud, exactly as the original `flterm --kernel` flow did. On `rpi3-netv2` that is the only path (a Python 3.5-compatible SFL uploader lives in `tests/hardware/`). On `rpi5-netv2` firmware may additionally be written to NOR with a modern flash-boot-enabled BIOS. The firmware is not embedded in block RAM: the 35T cannot spare it next to the video FIFOs. |
 | 15 | HDCP blocks | Kept as a compile-time option, unchanged, not extended. |
 | 16 | HDMI input pipeline | bunnie's litevideo fork ported into this repo as `netv2/gateware/video/` on current migen/LiteX. |
 | 17 | Pi software | Current MagicMirror release + `MMM-json-feed`; systemd units replace pm2. |
@@ -49,7 +50,9 @@ reversible; anything marked **risky** is where a wrong guess costs the most.
 | 19 | Utilities | `usb-pyromaniac`, `usb-mapping`, `xvcpi`: modernised with unit tests only. `netv2-soc`: archived and documented. |
 | 20 | Open-source flow gap | PCIe hard block and GTP transceivers are unsupported by nextpnr-xilinx, so the PCIe target is Vivado-only. All else must build with openXC7 (docker `regymm/openxc7`). |
 | 21 | Vivado | 2025.2 (installed). Newer releases only on user confirmation. |
-| 22 | LiteX | Pinned to release 2026.04 with a uv lockfile. |
+| 22 | LiteX | Pinned to release 2026.04 (git tag 8ae3092; PyPI stops at 2024.12) as `git+https` tag dependencies in `pyproject.toml`, locked with `uv.lock`. The other Lite* cores pin their matching 2026.04 tags. `migen` comes from PyPI 0.9.2 (m-labs/migen archived 2026-01; LiteX still depends on it). |
+| 27 | Test runner Python | The `netv2test` runner stays on the golden unit (Raspbian 9, Python 3.5.3) because it needs `/dev/video0`, `/dev/fb0` and `/dev/ttyS0` there. Therefore `netv2ctl`'s serial-REPL and Etherbone transports are written Python 3.5-compatible (no f-strings, no dataclasses, stdlib only) and the suite may depend on them. The PCIe transport is a separate optional module for Python 3.11+ on the Pi 5. |
+| 28 | Output verification without capture | The overlay SoC gains a `frame_crc` core: a CRC32 over the active pixels of each output frame, latched per frame in CSRs, plus a frame counter. It is validated against the MS2109 capture on the rpi3 rig in phase 3 and is then the proof of HDMI output content on the Pi 5, where no capture exists (phase 6). |
 | 23 | Reviews | Every milestone PR reviewed by sub-agents for correctness, hardware safety, security, and docs/reproducibility. |
 | 24 | Reporting | `LOG.md` (dated entries) and `docs/` in the repo; push notification per milestone. |
 | 25 | Limits | Builds only on the desktop. Never push to AlphamaxMedia or any upstream. Never open upstream issues/PRs. |
@@ -94,8 +97,10 @@ FAIL / 3 SKIP on the stock bitstream. That run is the behavioural baseline.
 ```
 pyproject.toml, uv.lock        LiteX 2026.04 + deps pinned; Python >= 3.11
 netv2/                         Python package
-  platform.py                  NeTV2 platform (from litex-boards, plus hdmi pad
-                               inversion variants "pcb"/"cable")
+  platform.py                  NeTV2 platform: pads from litex-boards, plus the
+                               hdmi pad inversion variants "pcb"/"cable", the
+                               `write_cfgmem -interface spix2` bitstream commands
+                               and CONFIGRATE 66 from the original netv2mvp.py
   targets/
     base.py                    UART+LEDs+DDR3+SPI flash+Ethernet (both toolchains)
     overlay.py                 VideoOverlaySoC (both toolchains)
@@ -105,6 +110,7 @@ netv2/                         Python package
                                output (core, hdmi phy/encoder), overlay, hdcp
     audio/                     data-island passthrough, audio sample packet
                                extraction, audio packet injection, ACR
+    frame_crc.py               per-frame CRC32 + counter over output pixels
   gateware/pcie/               LitePCIe integration, DMA to/from DDR
   gateware/eth/                Etherbone + UDP status
 firmware/                      C firmware ported to current LiteX libbase
@@ -164,15 +170,22 @@ New cores:
   TERC4 encoding.
 - `pcie/`: LitePCIe x1 Gen2 endpoint (Vivado `pcie_7x` IP), MMAP to CSRs,
   DMA engine to DDR; framebuffer-to-DDR path feeds the existing overlay DMA.
-- `eth/`: Etherbone kept; firmware adds a UDP JSON status/command port so the
-  REPL commands work over the network.
+- `eth/`: hardware Etherbone kept as a Wishbone master; a CPU-visible LiteEth
+  MAC is added on the same RMII PHY through LiteX's shared UDP crossbar
+  (`add_etherbone(with_ethmac=True)`); firmware adds a UDP JSON status/command
+  port so the REPL commands work over the network (decision 14).
+- `frame_crc`: CRC32 and frame counter over output0's active pixels, in CSRs
+  (decision 28).
 
 ### 4.4 Software
 
 - Firmware ported to current `libbase`/`libliteeth`; command set preserved so the
   test suite's console parser keeps working; new `audio`, `pcie`, `net` commands.
+  Delivered by serial boot on the golden unit, NOR or serial on the Pi 5
+  (decision 14b).
 - `netv2ctl`: one Python API over three transports (serial REPL, Etherbone,
-  PCIe BAR); used by the test suite and the Pi tools.
+  PCIe BAR); the first two are Python 3.5-compatible so the suite on the golden
+  unit can use them, the PCIe one needs Python 3.11+ (decision 27).
 - Pi tooling: OpenOCD configs for Pi 3B+/4/5 on stock OpenOCD, `update-fpga`
   rewritten in Python with the same safety checks (IDCODE gate, padding, CRC),
   MagicMirror current release with the org's `MMM-json-feed`, systemd units.
@@ -214,10 +227,10 @@ fixed or explicitly waived in the PR description.
 | 0 Repo setup | forks, `modern`, layout, uv project, `LOG.md`, subtree of test suite, docs skeleton | none |
 | 1 Baseline | `docs/original/*`; baseline suite report from `rpi3-netv2` on stock bitstream; time-boxed attempt to rebuild the 2019 design with pinned deps in a container | rpi3 report |
 | 2 Modern skeleton | `targets/base.py` builds on Vivado 2025.2 and openXC7 for a7-35 and a7-100; firmware skeleton | BIOS + memtest on rpi5 (100T) and rpi3 (35T, volatile) |
-| 3 HDMI port | `gateware/video/` ported; `targets/overlay.py` on Vivado; firmware ported; multires, chroma, HDCP option | rpi3 suite T01–T22 pass on the modern bitstream |
-| 4 Pi software | scripts, systemd, MagicMirror, update tool on trixie | rpi5 end to end; Pi 3 trixie via netboot node when available |
+| 3 HDMI port | `gateware/video/` ported; `targets/overlay.py` on Vivado; firmware ported (serial-booted); multires, chroma, HDCP option; `frame_crc` validated against capture | rpi3 suite T01–T31 pass on the modern bitstream with the same SKIPs as the baseline (T23, T29, T90) |
+| 4 Pi software | scripts, systemd, MagicMirror, update tool on trixie | rpi5: systemd units up, MagicMirror serving the overlay, console reports input1 locked and the JSON feed live; Pi 3 trixie via netboot node when available |
 | 5 openXC7 overlay | `targets/overlay.py` builds with openXC7 for both parts; timing report; gap list | rpi3 suite on openXC7 bitstream |
-| 6 PCIe | `targets/pcie.py`, kernel module, DMA loopback; host framebuffer path | rpi5 lspci 10ee:7011, DMA test, image on HDMI out via PCIe |
+| 6 PCIe | `targets/pcie.py`, kernel module, DMA loopback; host framebuffer path | rpi5 lspci 10ee:7011, DMA loopback test, framebuffer written over PCIe read back from DDR and its `frame_crc` matches the CRC computed on the host |
 | 7 HDMI audio | island passthrough, extract, inject cores + firmware + tests | rpi3 rig: T23 audio passes for passthrough and inject; extracted PCM matches source tone |
 | 8 Ethernet control | Etherbone, UDP status, `netv2ctl`, suite over network | rpi5/rpi3 with NeTV2 RJ45 on the LAN |
 | 9 Ancillary | exclave/jig-20 build on current Rust; utilities on Python 3.13 with tests; `netv2-soc` archived | none |
@@ -231,6 +244,12 @@ background as builds are slow.
 - **HDMI pipeline on openXC7 timing (148.5 MHz pixel, 742.5 MHz serdes)**:
   nextpnr-xilinx timing is weaker than Vivado's. Mitigation: 720p first, then
   1080p; keep the design split so a Vivado-only fallback is a flag, not a fork.
+- **openXC7 primitive coverage beyond timing**: the original CRG and input
+  clocking use BUFIO, BUFR, `MMCME2_ADV` with the DRP port (driven by the
+  `mmcm` CSRs and `debug mmcm`), `IDELAYCTRL`, and `STARTUPE2` for the SPI
+  clock. prjxray/nextpnr-xilinx coverage of DRP ports and BUFIO/BUFR must be
+  verified in phase 2 with a tiny test design before phase 5 is planned in
+  detail; the fallback is a fixed-ratio MMCM without DRP on the openXC7 build.
 - **DDR3 on openXC7**: litedram A7DDRPHY needs IDELAYCTRL, IDELAYE2, ISERDES; all
   in prjxray, but calibration margins may be thin. Mitigation: your
   fpgas.online `ddr-memory` design as the starting point; measure with memtest.
