@@ -221,14 +221,16 @@ Expected: no output other than the untracked one-off script (every change is a r
 The unmodified AlphamaxMedia `netv2-fpga` tree (master 4f4dd0d, 2023-07-13) as
 shipped: `netv2mvp.py` (LiteX 2019-03 plus forks pinned as submodules under
 `deps/`), the RISC-V firmware, the HDCP/phase-alignment Verilog under `overlay/`,
-and the production and testing bitstreams. Nothing here is edited; the modern
-tree lives one level up. See `docs/original/` for the description.
+and the production and testing bitstreams. No original file is modified; the
+only additions are two 2026 tooling files for the rebuild experiment
+(`Dockerfile.rebuild2019`, `rebuild2019_verilog.py`). The modern tree lives one
+level up. See `docs/original/` for the description.
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-rm scripts/_move_legacy.py; rmdir scripts 2>/dev/null || true
+rm scripts/_move_legacy.py; rmdir --ignore-fail-on-non-empty scripts
 git add -A legacy .gitmodules && git commit -m "refactor: move the original 2019 tree under legacy/
 
 Submodules moved one by one with git mv so .gitmodules paths follow.
@@ -282,6 +284,10 @@ def test_litex_is_2026_04():
 def test_family_versions_match():
     for pkg in ["litedram", "liteeth", "litepcie", "litespi", "litescope", "litex-boards"]:
         assert md.version(pkg) == "2026.04", pkg
+
+
+# The three pythondata packages are deliberately not checked: their version
+# strings come from the data they wrap, not from the 2026.04 tag.
 
 
 def test_migen_importable():
@@ -725,6 +731,8 @@ git commit -m "tests: host table and golden-unit guard for hardware scripts"
 
 - [ ] **Step 1: Copy the two notes**
 
+If either path is absent, `ssh ten64.welland.mithis.com 'ls ~/local/netv2/docs'` and record what exists instead.
+
 ```bash
 scp ten64.welland.mithis.com:~/local/netv2/docs/programming-netv2-on-rpi5.md docs/current/pi5-programming.md
 scp ten64.welland.mithis.com:~/local/netv2/docs/02-rp1-pio-jtag.md docs/current/pi5-rp1-pio-jtag.md
@@ -852,7 +860,8 @@ Expected: MagicMirror/electron process present, `active`. If not, run the suite'
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/testing/reports/2026-09-baseline
+git add -f docs/testing/reports/2026-09-baseline   # -f: the root .gitignore has *.bin, evidence may include .bin files
+git status --short docs/testing/reports | head
 git commit -m "test(baseline): stock NeTV2 suite run on rpi3-netv2 (golden unit)"
 ```
 
@@ -968,16 +977,31 @@ Expected: 3 passed; then a printout that says whether the MS2109's EDID (as seen
 
 - [ ] **Step 5: Read the TERC4 counters and the rpiz-3 audio state**
 
-Over the golden unit's console (read-only commands), using the suite's own console client:
+Over the golden unit's console, using the suite's own console client. The MagicMirror status script (`netv2-status.js`, run by pm2) holds `/dev/ttyS0` open and polls `json`, so two readers would split the bytes; pause pm2's `mm` process around the read exactly as the suite does (`tests/hdmi-suite/netv2test/overlay.py` `prepare()`/`restore()`), and resume it afterwards even on error. Put the following in `scripts/baseline_t4d.py` and copy it to the Pi (the golden unit has only Python 3.5, so this file is 3.5 syntax):
+
+```python
+"""Read status and TERC4 counters from the stock firmware (phase 1 baseline)."""
+import subprocess
+from netv2test.console import Console
+
+PM2 = "/home/pi/n/bin/pm2"
+subprocess.call([PM2, "stop", "mm"], stdout=subprocess.DEVNULL)
+try:
+    c = Console(port="/dev/ttyS0", baud=115200)
+    c.command("json off")
+    for cmd in ["status", "debug t4i", "debug t4d", "debug t4d"]:
+        print("=== " + cmd)
+        print(c.command(cmd))
+finally:
+    subprocess.call([PM2, "start", "mm"], stdout=subprocess.DEVNULL)
+    subprocess.call([PM2, "list"])
+```
 
 ```bash
-ssh pi@rpi3-netv2.iot.welland.mithis.com 'cd ~ && python3 - <<EOF
-from netv2test.console import Console
-c = Console(port="/dev/ttyS0", baud=115200)
-for cmd in ["status", "debug t4i", "debug t4d", "debug t4d"]:
-    print("=== " + cmd); print(c.command(cmd))
-EOF' | tee docs/testing/reports/2026-09-baseline/t4d.txt
+scp scripts/baseline_t4d.py pi@rpi3-netv2.iot.welland.mithis.com:~/baseline_t4d.py
+ssh pi@rpi3-netv2.iot.welland.mithis.com 'cd ~ && exec "$(command -v python3)" baseline_t4d.py' | tee docs/testing/reports/2026-09-baseline/t4d.txt
 ```
+Check the `t4d` output is complete (two lines of counters plus five BCH lines) before recording it; record in `t4d.txt` and `LOG.md` that `debug t4i` changed the running firmware's TERC4 interrupt enable (volatile RAM state, cleared at the unit's next reset).
 (`Console(port, baud)` and `command(cmd, timeout=3.0)` are the real API in `tests/hdmi-suite/netv2test/console.py`; `t4i`/`t4d` are sub-commands of `debug`, `legacy/firmware/ci.c` lines 991, 1141, 1154; the bare words print nothing.) Expected: `status` shows `input0: 1920x1080`; `debug t4d` prints `hdmi0 terc4 packet cnt: N, char cnt: M` (these are input1's counters, `ci.c:1155`) and five BCH words (input0's last capture). Record N, M and whether the BCH words are nonzero (nonzero means input0 has seen at least one data island).
 
 Then on the source: `ssh rpiz-3.iot.welland.mithis.com 'cat /proc/asound/cards; ls /proc/asound/card*/eld* 2>&1; for f in /proc/asound/card*/eld*; do echo "== $f"; cat $f; done'` (if the host key is unknown to this desktop, run it from `rpi3-netv2` instead, which already trusts `rpiz-3`). Append the output to `t4d.txt` under a heading. `eld_valid 1` with `monitor_present 1` and `sad_count 0` or `eld_valid 0` means the source believes the sink has no audio.
@@ -1038,15 +1062,15 @@ print("generated build/verilog-only-%s/gateware/top.v" % part)
 
 ```bash
 docker build -t netv2-rebuild2019 -f legacy/Dockerfile.rebuild2019 legacy
-docker run --rm -v "$PWD/legacy:/work" netv2-rebuild2019 python3 rebuild2019_verilog.py 35 --lx-ignore-deps 2>&1 | tail -20
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/legacy:/work" netv2-rebuild2019 python3 rebuild2019_verilog.py 35 --lx-ignore-deps 2>&1 | tail -20
 ls -l legacy/build/verilog-only-35/gateware/top.v
 ```
-Expected best case: `top.v` produced (tens of thousands of lines). `lxbuildenv` strips its own `--lx-*` flags before re-exec, so `sys.argv[1]` is still the part. Record the exact error otherwise (Python 3.7 vs the 2019 migen is the expected happy path; a `PYTHONHASHSEED` complaint means lxbuildenv did not re-exec).
+Expected: first `Missing submodules -- updating` followed by `fatal: not a git repository` (the container sees no `.git`; lxbuildenv ignores the return code and continues), then, best case, `top.v` produced (tens of thousands of lines). `lxbuildenv` strips its own `--lx-*` flags before re-exec, so `sys.argv[1]` is still the part. Record the exact error otherwise (Python 3.7 vs the 2019 migen is the expected happy path; a `PYTHONHASHSEED` complaint means lxbuildenv did not re-exec).
 
 - [ ] **Step 4: If Verilog generated, attempt synthesis with Vivado 2025.2 (mount `/opt/Xilinx` read-only)**
 
 ```bash
-docker run --rm -v "$PWD/legacy:/work" -v /opt/Xilinx:/opt/Xilinx:ro -v "$HOME/.Xilinx:/root/.Xilinx:ro" netv2-rebuild2019 python3 netv2mvp.py -p 35 --lx-ignore-deps 2>&1 | tail -30
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/work -v "$PWD/legacy:/work" -v /opt/Xilinx:/opt/Xilinx:ro -v "$HOME/.Xilinx:/work/.Xilinx:ro" netv2-rebuild2019 python3 netv2mvp.py -p 35 --lx-ignore-deps 2>&1 | tail -30
 ```
 This runs the original flow: BIOS compile with the container's `riscv64-unknown-elf-gcc` (the 2019 firmware expected `riscv64-unknown-elf-` too), then Vivado.
 Expected: either a bitstream at `legacy/build/gateware/top.bit` (record `ls -l` and the timing summary from `legacy/build/gateware/vivado.log`), or the first hard error. Vivado 2025.2 with the 2019-generated TCL is the most likely failure point; capture it verbatim.
