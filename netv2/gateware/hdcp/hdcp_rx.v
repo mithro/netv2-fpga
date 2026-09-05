@@ -80,14 +80,94 @@ module hdcp_rx (
    parameter TRF_CYCLES = 5'd8;  // rise/fall deglitch, 160 ns @ 50 MHz (i2c_snoop.v:74)
 
    //====================================================================
-   // Km accumulator / key store: STUB for H3.  Tied off, no logic.
+   // Km accumulator + 40x56 sink-key store (H3, spec section 4).
+   //
+   // The key store is DISTRIBUTED RAM (LUTRAM), never block RAM: the 35T
+   // baseline is at 95% BRAM (spec section 11.3), so 2240 bits of LUTRAM is
+   // the cheap choice.  40 entries deep, indexed by key_index[5:0].  Async
+   // reads (LUTRAM) mean the accumulator can read keys[j] combinationally.
+   //
+   // Loading (sys->eth synced key_we pulse; key_index/lo/hi quasi-static):
+   //   key_we writes {key_hi, key_lo} at key_index; a write whose index
+   //   equals the current keys_loaded advances keys_loaded (so a driver
+   //   loading 0..39 in order ends at 40).  keys_clear resets keys_loaded.
+   //
+   // Km accumulator (spec section 4.3): on aksv_done, if all 40 keys are
+   // loaded, walk indices 0..39 over 40 cycles summing keys[j] mod 2^56 for
+   // each set Aksv[j] bit, then present Km_hw and raise Km_valid_hw.  A new
+   // aksv_done mid-walk abandons the in-flight sum and restarts cleanly
+   // (HDCP 1.4 transition B1:B1); a half-loaded store (< 40) yields no Km.
    //====================================================================
-   assign keys_loaded = 7'd0;
-   assign Km_hw       = 56'd0;
-   assign Km_valid_hw = 1'b0;
-   // key_index / key_lo / key_hi / key_we / keys_clear are intentionally
-   // unused in H2; H3 adds the 40x56 LUTRAM store and the 40-cycle
-   // accumulator that consume them.
+   (* ram_style = "distributed" *) reg [55:0] keys [0:39];
+
+   reg [6:0]  keys_loaded_r;   // count of distinct in-order indices loaded (0..40)
+
+   always @(posedge clk or posedge reset) begin
+      if (reset) begin
+	 keys_loaded_r <= 7'd0;
+      end else if (keys_clear) begin
+	 keys_loaded_r <= 7'd0;
+      end else if (key_we) begin
+	 keys[key_index] <= {key_hi[23:0], key_lo[31:0]};
+	 if ({1'b0, key_index} == keys_loaded_r)
+	   keys_loaded_r <= keys_loaded_r + 7'd1;
+      end
+   end
+
+   assign keys_loaded = keys_loaded_r;
+
+   // Km accumulator FSM (all in the eth / clk domain).
+   localparam [1:0] KM_IDLE = 2'd0;
+   localparam [1:0] KM_RUN  = 2'd1;
+   localparam [1:0] KM_DONE = 2'd2;
+
+   reg [1:0]  km_state;
+   reg [5:0]  km_idx;
+   reg [55:0] km_acc;
+   reg [55:0] km_hw_r;
+   reg        km_valid_r;
+
+   always @(posedge clk or posedge reset) begin
+      if (reset) begin
+	 km_state   <= KM_IDLE;
+	 km_idx     <= 6'd0;
+	 km_acc     <= 56'd0;
+	 km_hw_r    <= 56'd0;
+	 km_valid_r <= 1'b0;
+      end else if (aksv_done) begin
+	 // Any new last-Aksv byte invalidates the previous Km (B1:B1) and, if
+	 // the key store is fully loaded, (re)starts the accumulator cleanly --
+	 // abandoning any in-flight sum.
+	 km_valid_r <= 1'b0;
+	 if (keys_loaded_r == 7'd40) begin
+	    km_state <= KM_RUN;
+	    km_idx   <= 6'd0;
+	    km_acc   <= 56'd0;
+	 end else begin
+	    km_state <= KM_IDLE;   // half-loaded store: no Km produced
+	 end
+      end else begin
+	 case (km_state)
+	   KM_RUN: begin
+	      // 56-bit truncating add (natural wraparound), spec section 4.3.
+	      if (Aksv[km_idx])
+		km_acc <= km_acc + keys[km_idx];
+	      if (km_idx == 6'd39)
+		km_state <= KM_DONE;
+	      km_idx <= km_idx + 6'd1;
+	   end
+	   KM_DONE: begin
+	      km_hw_r    <= km_acc;
+	      km_valid_r <= 1'b1;
+	      km_state   <= KM_IDLE;
+	   end
+	   default: ;  // KM_IDLE: hold
+	 endcase
+      end
+   end
+
+   assign Km_hw       = km_hw_r;
+   assign Km_valid_hw = km_valid_r;
 
    // rx_enable is quasi-static (a MultiReg'd CSR in the wrapper); resync it
    // locally so a raw level cannot metastabilise the FSM.
