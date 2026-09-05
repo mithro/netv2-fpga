@@ -32,6 +32,14 @@ in <1 poll for all indices 0..39). KEY_ADR/KY0/KY1 are write-only (read back the
 "hdcp" APB signature), so key STORAGE can only be verified end-to-end via a
 successful authentication (correct keys -> Km match). Interface is live.
 
+### Step 3 (DONE) — topology + decode architecture mapped
+NeTV2 gateware has a full HDCP decryptor (`overlay/hdcp_*.v`) driven by CSRs (see
+`hdcp/REGISTERS.md`). Decode needs: incoming HDCP-encrypted video (Pi produces it),
+An (snooped or 0), Km (loaded via CSR), Km_valid=1, and a cipher-init trigger
+(Aksv_manual in manual mode). Because we own both ends, arbitrary consistent keys +
+An=0 suffice -- no master key, no real HDCP display. Full register field map +
+controlled encrypt->decrypt plan recorded in hdcp/REGISTERS.md.
+
 ## Next steps
 - Step 2: key-loader write/DONE handshake (load a key index, no encryption) — mechanism check.
 - Step 3: read the downstream HDCP receiver (NeTV2 / capture path) BKSV over DDC 0x74; confirm
