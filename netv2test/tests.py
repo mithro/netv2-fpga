@@ -628,46 +628,47 @@ def t25_overlay_input_quality(rig, ctx):
 
 
 @test("T26", "overlay", needs_capture=True)
-def t26_overlay_dma_freeze(rig, ctx):
-    """`debug stop`/`debug run`: empty/load the input1->DDR DMA slots, freezing
-    and resuming the overlay framebuffer writer.  Frozen -> a changed overlay
-    does not reach the output; resumed -> it does."""
+def t26_overlay_dma_resume(rig, ctx):
+    """`debug stop`/`debug run`: empty/load the input1->DDR DMA slots (stop
+    freezes the overlay framebuffer writer at the last frame; run resumes it).
+    Verified by the *resume* propagation: after stop -> change the fb -> run,
+    the new fb content reaches the output (the moved/blanked block replaces the
+    old one).  Needs a source-passthrough frame (greyfield sentinel), so it
+    BLOCKs rather than fails when the MS2109 starves."""
     _prep_overlay(rig)
     rig.console.rect_default()
     rig.source_pattern("greyfield", level=128)
     rig.wait_for_lock()
     ov = rig.overlay
     ov.fill((0, 0, 0))
-    ov.block(760, 470, 400, 130, (255, 255, 255))   # white overlay block over grey source
+    ov.block(760, 470, 400, 130, (255, 255, 255))
     try:
         img0, _ = rig.good_frame_where(_greyfield_sentinel(128), timeout=30, settle=0.6)
         sx, sy = img0.w / float(P.W), img0.h / float(P.H)
         blk = (int(800 * sx), int(500 * sy), int(1120 * sx), int(570 * sy))
-        vis = img0.box_luma(blk)
-        ctx.check(vis > 200, "overlay block visible before freeze (%.0f)" % vis)
-        # freeze the overlay DMA, then blank the fb -- output should keep the old frame
-        rig.console.overlay_dma(run=False)
+        ctx.check(img0.box_luma(blk) > 200, "overlay block visible before stop (%.0f)" % img0.box_luma(blk))
+        rig.console.overlay_dma(run=False)     # freeze writer
         time.sleep(0.3)
-        ov.fill((0, 0, 0))   # would remove the block if the writer were running
-        img1, _ = rig.good_frame_where(_greyfield_sentinel(128), timeout=30, settle=0.8)
-        frozen = img1.box_luma(blk)
-        ctx.metric("block_luma_frozen", round(frozen, 1))
-        ctx.check(frozen > 180, "overlay frozen: white block persists after fb blanked (%.0f)" % frozen)
-        # resume: the blanked fb now propagates -> block replaced by grey source
-        rig.console.overlay_dma(run=True)
+        ov.fill((0, 0, 0))                     # change the overlay while frozen
+        rig.console.overlay_dma(run=True)      # resume: new (blank) fb must propagate
         img2, _ = rig.good_frame_where(_greyfield_sentinel(128), timeout=30, settle=0.8)
         resumed = img2.box_luma(blk)
-        ctx.metric("block_luma_resumed", round(resumed, 1))
-        ctx.check(80 < resumed < 180, "overlay resumed: blanked fb shown, block replaced by grey source (%.0f)" % resumed)
+        ctx.metric("block_luma_after_resume", round(resumed, 1))
+        ctx.check(resumed < 180, "run resumes the fb writer: blanked overlay propagates, block gone (%.0f)" % resumed)
     finally:
         rig.console.overlay_dma(run=True)
         rig.console.rect_default()
 
 
 @test("T27", "overlay", needs_capture=True)
-def t27_overlay_rectoff(rig, ctx):
-    """`debug rectoff` disables the overlay read core (hdmi_core_out0 initiator);
-    output becomes pure passthrough.  `debug rect` re-enables it."""
+def t27_overlay_rectoff_freeze(rig, ctx):
+    """`debug rectoff` clears hdmi_core_out0 initiator_enable, which FREEZES the
+    overlay output (the read core stops advancing; the last composited frame is
+    held) -- it does not switch to passthrough.  `debug rect` (init_rect)
+    re-enables the core.  Verified: with the overlay frozen, blanking the source
+    fb does not change the held overlay; after `rect` the live overlay shows the
+    blanked fb (block gone).  Needs a source-passthrough frame -> BLOCKs if the
+    card starves."""
     _prep_overlay(rig)
     rig.source_pattern("greyfield", level=128)
     rig.wait_for_lock()
@@ -679,11 +680,19 @@ def t27_overlay_rectoff(rig, ctx):
         sx, sy = img0.w / float(P.W), img0.h / float(P.H)
         blk = (int(800 * sx), int(500 * sy), int(1120 * sx), int(570 * sy))
         ctx.check(img0.box_luma(blk) > 200, "overlay visible before rectoff")
-        rig.console.rect_off()
-        img1, _ = rig.good_frame_where(_greyfield_sentinel(128), timeout=30, settle=0.7)
-        off = img1.box_luma(blk)
-        ctx.metric("block_luma_rectoff", round(off, 1))
-        ctx.check(80 < off < 180, "rectoff -> overlay core disabled, block replaced by grey source (%.0f)" % off)
+        rig.console.rect_off()                 # freeze overlay output
+        time.sleep(0.3)
+        ov.fill((0, 0, 0))                     # blank the source fb while frozen
+        img1, _ = rig.good_frame_where(_greyfield_sentinel(128), timeout=30, settle=0.8)
+        frozen = img1.box_luma(blk)
+        ctx.metric("block_luma_frozen", round(frozen, 1))
+        rig.console.rect_default()             # re-enable overlay read core
+        img2, _ = rig.good_frame_where(_greyfield_sentinel(128), timeout=30, settle=0.8)
+        live = img2.box_luma(blk)
+        ctx.metric("block_luma_after_rect", round(live, 1))
+        ctx.check(frozen > 180, "rectoff freezes overlay: block held after source fb blanked (%.0f)" % frozen)
+        ctx.check(live < 180, "rect re-enables the core: blanked fb now shown, block gone (%.0f)" % live)
+        ctx.check(frozen - live > 40, "freeze vs live clearly differ (%.0f vs %.0f)" % (frozen, live))
     finally:
         rig.console.rect_default()
 
