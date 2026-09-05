@@ -1,0 +1,6 @@
+initial KEY_CTL = 0x00000002 (START=0 DONE=1 DISHDCP=0)
+idx  0: pre=0x2  after START, KEY_CTL[2:0] seq=0x2  DONE=True (1 polls)
+idx  1: pre=0x2  after START, KEY_CTL[2:0] seq=0x2  DONE=True (1 polls)
+idx  2: pre=0x2  after START, KEY_CTL[2:0] seq=0x2  DONE=True (1 polls)
+idx 39: pre=0x2  after START, KEY_CTL[2:0] seq=0x2  DONE=True (1 polls)
+final KEY_CTL = 0x00000002
