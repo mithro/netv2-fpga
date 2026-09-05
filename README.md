@@ -16,3 +16,54 @@ through a USB video capture card attached to `rpi3-netv2`.
 | HDMI source | `rpiz-3` (RPi Zero W Rev 1.1, Raspbian 13 trixie, kernel 6.18) | PoE+USB ethernet dongle on `gsm7252ps-s1` port 1/0/26 (VLAN 90). HDMI out -> NeTV2 HDMI in. |
 | NeTV2 host | `rpi3-netv2` (RPi 3B+, Raspbian 9 stretch, kernel 4.14) | login `pi`. NeTV2 JTAG via GPIO (openocd bcm2835gpio). USB capture card (`345f:2109`, `/dev/video0`) on NeTV2 HDMI out. |
 | Switch | `gsm7252ps-s1` | "Top of Xmas Tree Rack in Back Shed". |
+
+## Results (2026-09-05)
+
+All three original asks verified with device output:
+
+1. **RPi Zero W outputs 1080p60** — `rpiz-3` drives HDMI-A-1 at
+   `1920x1080@60.00 148.500 MHz` (CEA VIC-16). It needs no forced config: the
+   capture card's EDID reaches it through the NeTV2 and the kernel picks the
+   preferred 1080p60 mode. The source agent drives it deterministically.
+2. **NeTV2 locks onto it** — firmware `status` reports
+   `input0: 1920x1080 (@ 148.49 MHz)`; the `debug input0` trace shows
+   `chansync:1`, char-sync `111`, `WER 0 0 0`, `res:1920x1080`.
+3. **USB capture card receives the NeTV2 output** — the MS2109
+   (`345f:2109`, "HD TO USB") captures the composited output; see
+   `evidence/` for decoded frames showing the source test pattern with the
+   MagicMirror overlay keyed on top.
+
+### Test suite
+
+`netv2test/` runs entirely on `rpi3-netv2` and drives `rpiz-3` over a TCP
+agent. Run it with:
+
+```
+ssh pi@rpi3-netv2.welland.mithis.com
+cd ~ && python3 -m netv2test.run_all          # full suite, writes reports/<ts>/
+python3 -m netv2test.run_all --list           # list tests
+python3 -m netv2test.run_all --only T04,T09   # subset
+```
+
+Status vocabulary: **PASS** (verified), **FAIL** (a NeTV2/chain defect — must
+be zero), **BLOCKED** (the MS2109 capture card gave no usable frame in budget —
+a capture-card limitation, reported separately so it never masquerades as a
+NeTV2 pass/fail), **SKIP** (documented gap). Typical result:
+**21 PASS / 0 FAIL / 2 SKIP** (T23 audio and T90 gaps).
+
+Coverage: console/DNA/help, HPD gating, EDID passthrough, input0 lock +
+stability (WER), overlay-input lock, output frame rate, output-not-blank,
+colour fidelity, geometry, overlay keying / rectangle margins / threshold /
+setrect / alignment, frame-counter continuity, frame latency (overlay path,
+and the NeTV2-only differential when capture duty permits), video_matrix and
+video_mode listings, 720p mode change and return, source-loss/recovery,
+JSON status, and FPGA thermal.
+
+### Known hardware limitation
+
+The MS2109 USB capture dongle intermittently loses HDMI sync to the NeTV2's
+stable 1080p60 output and emits a frozen "no signal" frame; its duty cycle fell
+from ~100 % (cold) to 3-30 % over a multi-hour hot session. The NeTV2 output
+itself is stable (`WER 0`), proven independently over the serial console. The
+suite tolerates this by selecting signal-bearing frames from bursts and marking
+capture-only checks BLOCKED rather than FAIL when the card starves.
