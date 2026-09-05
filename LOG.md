@@ -262,3 +262,26 @@ ev FLIP_COMPLETE seq 41420 time 597798.060334 mono 597798.060364
   can be decoded without Python deps; YUYV raw is available at 720x480@60fps
   and 1920x1080@5-10fps. ALSA capture device `card 1: U0x345f0x2109` present
   (HDMI audio from the capture card).
+
+### 17:30 — Source agent deployed; V4L2 capture module working
+
+- `agent/netv2_source_agent.py` installed on rpiz-3 as
+  `netv2-source-agent.service` (root, enabled, `/opt/netv2-agent/`). Smoke
+  test from rpi3-netv2: ping RTT min 3.8 ms / median 4.5 ms, `info` reports
+  `1920x1080@60.00 148.500 ... P|D`, connected, EDID 256 bytes; NeTV2 stays
+  locked with the agent owning the display (`input0: 1920x1080 (@ 148.49 MHz)`).
+  Bug fixed on the way: `pykms.Card.minor` is the /dev/dri minor (6), not the
+  card index; EDID path is now globbed.
+- `netv2test/v4l2cap.py`: pure-python V4L2 mmap capture. First attempt used
+  64-bit struct sizes (`v4l2_format` 208) -> `ENOTTY`; compiled a probe with
+  gcc on the Pi: on armhf `v4l2_format` is **204 bytes with the union at
+  offset 4**, `v4l2_buffer` 68 (timestamp @20, sequence @44, memory @48,
+  m @52, length @56), `v4l2_streamparm` 204 (timeperframe @12).
+  Measured with the fixed module (60 frames each):
+
+```
+720x480  YUYV @60 : 691200 B/frame, interval 19.6/19.9/21.6 ms (USB2-bound ~50 fps), 0 dropped
+1920x1080 MJPG @60: ~98 kB/frame,  interval 16.5/16.7/16.7 ms, 0 dropped
+1920x1080 YUYV @10: 4147200 B/frame, interval 114/139/331 ms
+```
+  Buffer timestamps are CLOCK_MONOTONIC (dequeue time - timestamp = 14-22 ms).
