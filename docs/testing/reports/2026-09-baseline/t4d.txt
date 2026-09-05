@@ -1,0 +1,158 @@
+Phase 1 baseline: status + TERC4 debug counters (rpi3-netv2, stock firmware)
+Captured 2026-09-05 with scripts/baseline_t4d.py, piped over ssh stdin to
+rpi3-netv2's python3 (Python 3.5.3), per docs/superpowers/plans/2026-09-05-
+phase0-1-repo-setup-and-baseline.md Task 14.
+
+Command:
+  ssh pi@rpi3-netv2.iot.welland.mithis.com 'cd ~ && exec "$(command -v python3)" -' \
+      < scripts/baseline_t4d.py
+
+Note on ordering below: pm2's own subprocess output (unbuffered, written
+directly to the inherited fd) and this script's own print()s (buffered,
+flushed at interpreter exit) interleave unpredictably in the raw tee'd
+capture; the pm2 stop/start/list lines are collected together at the end of
+this section regardless of when they actually ran. They do not affect the
+correctness of the console data itself.
+
+=== status
+input0:  1920x1080 (@   0. 0 MHz)
+input1:  1920x1080 (@ 148.49 MHz)
+xadc: 68657 mC
+ddr: read:    0Mbps  write: 3986Mbps  all: 3986Mbps
+
+=== debug t4i
+debug mmcm                     - dump mmcm configuration
+debug ddr                      - show DDR bandwidth
+debug dna                      - show Board's DNA
+debug edid                     - dump monitor EDID
+
+=== debug t4d (first call)
+debug mmcm                     - dump mmcm configuration
+debug ddr                      - show DDR bandwidth
+debug dna                      - show Board's DNA
+debug edid                     - dump monitor EDID
+
+=== debug t4d (second call)
+debug mmcm                     - dump mmcm configuration
+debug ddr                      - show DDR bandwidth
+debug dna                      - show Board's DNA
+debug edid                     - dump monitor EDID
+
+=== pm2 (stop mm / read console / start mm / list), first attempt
+First attempt failed: the non-interactive ssh session's PATH did not include
+/home/pi/n/bin (only set up in ~/.bashrc, which ssh's non-interactive shell
+does not source), so pm2's "#!/usr/bin/env node" shebang could not find
+node and `pm2 stop mm` silently no-op'd:
+  /usr/bin/env: 'node': No such file or directory   (x3: stop, start, list)
+Because `pm2 stop mm` never actually ran, MagicMirror's status script kept
+/dev/ttyS0 open and polling throughout, which is the most likely reason the
+very first attempt's status/debug reads looked garbled/contended (input0
+and input1 MHz values swapped from previously-recorded good baselines).
+scripts/baseline_t4d.py was fixed to pass PATH=/home/pi/n/bin:$PATH to the
+pm2 subprocess calls; the run captured above is the corrected, clean run.
+Verified before the corrected run (manual `PATH=... pm2 list`): mm was
+online, restart=8, confirming it had recovered on its own from the earlier
+contention.
+
+=== pm2 list after the corrected run
+┌──────────────┬────┬──────┬──────┬─────────┬─────────┬────────┬────────┬───────────┬──────┬──────────┐
+│ App name     │ id │ mode │ pid  │ status  │ restart │ uptime │ cpu    │ mem       │ user │ watching │
+├──────────────┼────┼──────┼──────┼─────────┼─────────┼────────┼────────┼───────────┼──────┼──────────┤
+│ mm           │ 0  │ fork │ 1220 │ online  │ 8       │ 1s     │ 100.9% │ 34.0 MB   │ pi   │ disabled │
+│ netv2-status │ 1  │ fork │ 0    │ stopped │ 1912748 │ 0      │ 0%     │ 0 B       │ pi   │ disabled │
+└──────────────┴────┴──────┴──────┴─────────┴─────────┴────────┴────────┴───────────┴──────┴──────────┘
+mm is online after the run (pm2 stop/start round-tripped correctly this
+time; no node/PATH errors were printed on the corrected run).
+
+=== rpiz-3 /proc/asound
+Command attempted directly:
+  ssh rpiz-3.iot.welland.mithis.com 'cat /proc/asound/cards; ...'
+Result: FAILED — "Host key verification failed." This desktop has no
+known_hosts entry for rpiz-3.iot.welland.mithis.com at all.
+
+Fallback attempted via the golden unit (as the suite itself does):
+  ssh pi@rpi3-netv2.iot.welland.mithis.com \
+      'ssh -o BatchMode=yes rpiz-3 "cat /proc/asound/cards; ..."'
+Result: FAILED — also "Host key verification failed."
+Diagnosed with `ssh -vvv` from rpi3-netv2 to rpiz-3: rpi3-netv2's
+known_hosts has entries for rpiz-3.iot.welland.mithis.com, but not for the
+ECDSA key type the host currently offers ("No ECDSA host key is known for
+rpiz-3 and you have requested strict checking. Host key verification
+failed."). This looks like rpiz-3's host key material changed (e.g. a
+reimage/re-key) since those known_hosts entries were recorded, or the
+entries were only ever recorded for a different key type. Per the task's
+hard safety rules, host key checking was not bypassed (no
+-o StrictHostKeyChecking=no / accept-new was used) — this is left for a
+human to resolve deliberately (confirm the new key out of band and add it),
+not to paper over automatically.
+
+Consequence: no rpiz-3 ELD / ALSA PCM state could be captured for this
+report. `sad_count`/`eld_valid`/`monitor_present` and PCM substream status
+remain unknown from this run; the EDID-side evidence (see
+edid-analysis.md) is unaffected since it was read from the already-captured
+fixture file, not from a live rpiz-3 session.
+
+=== notes
+Date: 2026-09-05.
+
+`debug t4i` was sent to enable the TERC4 interrupt in the running firmware.
+Per legacy/firmware/ci.c (~line 1141), this is a live-firmware-state change:
+it sets hdmi_in0_decode_terc4_ev_enable/pending and adds
+HDMI_IN0_INTERRUPT to the CPU's interrupt mask. It is volatile CPU/CSR
+state, not something written to flash: it persists only until the FPGA is
+reconfigured (a JTAG reload), which the golden unit is never subjected to
+outside of that mechanism. It does not survive a power cycle or CPU reset.
+
+The `hdmi0 terc4 packet cnt` / `char cnt` line that `debug t4d` prints is
+mislabeled in the source: per legacy/firmware/ci.c:1155-1156, that first
+printf actually reads hdmi_in1_decode_terc4_t4d_count /
+_t4d_char (input1's TERC4 decoder), while the five bch0..bch4 words that
+follow (ci.c:1156-1164) read hdmi_in0's TERC4 capture registers. So the
+printed "hdmi0" prefix on the packet/char-count line is misleading: those
+counts belong to input1 (the MagicMirror/overlay input from the Pi Zero
+running the compositor UI, which is a plain framebuffer output and is not
+expected to carry HDMI data islands / TERC4-coded audio packets), while
+input0 (the rpiz-3 HDMI source under test, feeding the capture-card output
+path) is what the five BCH words characterize.
+
+Reading of the numbers: **neither the packet/char counters nor the BCH
+words could be obtained in this run.** Both `debug t4i` and both `debug
+t4d` calls returned the same 4-line help_debug() fallback text (the exact
+text of legacy/firmware/ci.c's help_debug(), reached only via its `else`
+branch when the token doesn't match any recognized `debug` subcommand — see
+ci.c line ~1170), not the interrupt-mask/terc4_ev_enable print or the
+packet-count/BCH lines specified at ci.c:1154-1164. This is reproducible
+(both debug t4d calls returned byte-for-byte identical output), so it is
+not attributable to serial contention on this corrected run (mm was
+confirmed paused correctly this time, unlike the first, contaminated
+attempt above).
+
+The most likely explanation: **the bitstream/firmware image currently
+loaded on rpi3-netv2's FPGA predates the t4i/t4d additions visible in this
+repo's legacy/firmware/ci.c**, i.e. the running image's do_debug() simply
+has no "t4i"/"t4d" branches to match, so control falls through to
+help_debug(). This cannot be distinguished from a token-parsing bug from
+the console alone without reflashing (out of scope/forbidden for this
+golden unit), but help_debug()'s hard-coded 4-line text matching exactly
+what came back for both t4i and t4d is strong evidence for "unrecognized
+subcommand", not a garbled read.
+
+Net effect for phase 1: no islands-arriving-on-input1 vs.
+islands-arriving-on-input0 comparison could be made this run, because the
+firmware currently on the golden unit does not expose the counters needed
+to make it. This is itself a useful phase 1 finding: any phase 7a
+diagnostic that wants live TERC4 packet/BCH counters will need a firmware
+image that includes the ci.c t4i/t4d handlers, built and loaded
+deliberately (and knowingly, since that changes the unit away from "stock,
+never modified").
+
+Separately, `status` reported input0 at 1920x1080 resolution (satisfying
+the expected check) but at "0. 0 MHz", while input1 reported 148.49 MHz —
+the inverse of the MHz split recorded earlier the same day in
+tests/hdmi-suite/README.md ("input0: 1920x1080 (@ 148.49 MHz)"). This may
+simply reflect a momentarily unlocked/mid-negotiation input0 clock at the
+instant of this read (other agents/tests may have been exercising the same
+shared rig concurrently), or a real change in what's connected to which
+input; it was not chased further here since it stayed outside this task's
+scope (t4i/t4d + EDID + rpiz-3 ELD), but it is worth a follow-up look in
+phase 7a if the input0/input1 MHz split keeps flipping.
