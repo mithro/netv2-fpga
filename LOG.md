@@ -171,3 +171,31 @@ for the whole test run (it is both the HPD source and the measurement sink).
 Tooling on rpi3-netv2 (python 3.5): numpy 1.12 present; **no** PIL, cv2,
 ffmpeg. MJPG decoding for tests will need a pure-python/numpy JPEG path or
 use the YUYV format instead (raw, no decode needed).
+
+### 16:30 — **NeTV2 locks input0 at 1920x1080 @ 148.49 MHz (goal 1 achieved)**
+
+With a 15-minute V4L2 stream running on the capture card (keeps HPD asserted)
+and `kmstest -c HDMI-A-1 -r 1920x1080@60 --cea -T smpte` running on rpiz-3,
+`debug input0` on the NeTV2 console shows the lock sequence:
+
+```
+hdmi_in0: PLL locked
+hdmi_in0: setting algo 2 eye time to 14 IDELAY periods
+hdmi_in0: ph: ... // charsync:111 [5 6 6] // ... // WER:2759895 2735115 2760246 // chansync:0 // res:0x0
+... (10 lines of phase search, ~1 s) ...
+hdmi_in0: ph:   0( 1/ 8)ff    0(11/18)ff    0(10/17)ff // charsync:111 [0 0 0] // eye:0000007f 00007fc0 00007fc0 // WER:  0   0   0 // chansync:1 // res:1920x1080
+```
+
+`status`:
+
+```
+input0:  1920x1080 (@ 148.49 MHz)
+input1:  1920x1080 (@ 148.49 MHz)
+xadc: 79361 mC
+ddr: read: 4080Mbps  write: 3974Mbps  all: 8054Mbps
+```
+
+Over 25 s of debug output: 378/389 samples `res:1920x1080 chansync:1 WER 0 0 0`
+(the first 10 were the initial phase search; one transient `1920x368`).
+Board DNA: `0058a44663258854`. FPGA die temp rose to ~79 C with both inputs
+and the output active.
