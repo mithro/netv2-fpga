@@ -57,7 +57,7 @@ def main():
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--only", default="")
     ap.add_argument("--no-reset", action="store_true", help="skip USB reset of the capture card")
-    ap.add_argument("--capture", default="mjpg", choices=["mjpg", "yuyv480", "yuyv1080"])
+    ap.add_argument("--capture", default="yuyv480", choices=["mjpg", "yuyv480", "yuyv1080"])
     args = ap.parse_args()
 
     tests = suite.all_tests()

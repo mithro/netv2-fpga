@@ -148,7 +148,7 @@ class Rig(object):
 
     def measure_duty(self, seconds=6.0):
         """Fraction of captured frames that carry real signal, plus effective fps."""
-        n = max(1, int(self.cap.fps or 30) * int(seconds))
+        n = min(180, max(30, int(self.cap.fps or 30) * int(seconds)))
         frames = self.cap.record(n, timeout=seconds + 8)
         if not frames:
             return {"duty": 0.0, "fps": 0.0, "n": 0, "good": 0}
