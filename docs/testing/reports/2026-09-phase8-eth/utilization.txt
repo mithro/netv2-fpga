@@ -1,0 +1,16 @@
+| Slice LUTs                 | 9072 |     0 |          0 |     63400 | 14.31 |
+| Slice Registers            | 7893 |     0 |          0 |    126800 |  6.22 |
+| Slice Registers                            | 7893 |     0 |          0 |    126800 |  6.22 |
+| Block RAM Tile    | 46.5 |     0 |          0 |       135 | 34.44 |
+|   RAMB36/FIFO*    |   25 |     0 |          0 |       135 | 18.52 |
+|     RAMB36E1 only |   25 |       |            |           |       |
+|   RAMB18          |   43 |     0 |          0 |       270 | 15.93 |
+|     RAMB18E1 only |   43 |       |            |           |       |
+* Note: Each Block RAM Tile only has one FIFO logic available and therefore can accommodate only one FIFO36E1 or one FIFO18E1. However, if a FIFO18E1 occupies a Block RAM Tile, that tile can still accommodate a RAMB18E1
+| DSPs           |    4 |     0 |          0 |       240 |  1.67 |
+| Bonded IOB                  |   90 |    90 |          0 |       285 | 31.58 |
+| BUFGCTRL   |    6 |     0 |          0 |        32 | 18.75 |
+| MMCME2_ADV |    0 |     0 |          0 |         6 |  0.00 |
+| PLLE2_ADV  |    1 |     0 |          0 |         6 | 16.67 |
+| RAMB18E1   |   43 |        Block Memory |
+| PLLE2_ADV  |    1 |               Clock |

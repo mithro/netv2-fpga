@@ -1,0 +1,1 @@
+ade38764b8a13273f3e07f8e309d1b1a77da21a5fe8dc459add727b70af30047  build/netv2-eth/gateware/kosagi_netv2.bit
