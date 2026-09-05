@@ -664,3 +664,27 @@ shared key set (`STATUS.md:5-22`).
 * **Enhanced Link Verification (Pj')** (1.1_FEATURES = 0, 0x0A reads 0x00), **Advance Cipher / Ainfo**
   (accepted and discarded, §3), and **the secondary link (0x76)**.
 * **Faking EDID or HPD.** Both keep coming from the downstream device through the pass-through (§1.1).
+
+## 13. As-built divergences (2026-09-06)
+
+Recorded after the branch review, so this spec matches what shipped:
+
+* **Observability CSRs deferred.** `frame_count`, `i2c_txn_count`, `pixo_alive`
+  and `auth_state` named in earlier sections were not built into the H4/H5
+  wrapper. The built `hdcprx` CSR set is authoritative: `bksv`, key-load
+  (`key_index`/`key_data_lo`/`key_data_hi`/`key_we`/`keys_clear`/`keys_loaded`),
+  `rx_enable`, `km_source`, `r0`, `ri`, `aksv`, `an`, `ainfo`, `km_hw`,
+  `status` (bit0 rx_armed, bit1 keys_ok, bit2 km_valid, bit3 r0_valid, bit4
+  sda_driving). See `legacy/build/hdcprx-*/csr.csv`. The deferred counters are a
+  future observability nicety, not needed for DoD 1+2.
+* **Host tool** is `software/hdcp/netv2_hdcp_ctl.py` (§8 earlier named a
+  `tests/hdmi-suite/hdcp/netv2_load_sink_keys.py`); the shipped tool loads keys,
+  arms, reads status, and reads back the received Aksv (A_actual) over the
+  console.
+* **`receiver.py` standalone default.** The modern wrapper defaults `r0_pix`/
+  `ri_pix` to the raw cipher `Ri`; the correct R0-vs-Ri latch comes from the
+  H5 bridge's `hdcp_mod_rx` override. The wrapper is not correct as R0/Ri source
+  without the bridge; its docstring says so.
+* **Timing.** Neither part closes timing on Vivado 2025.2 (pre-existing base
+  issue, not the receiver — see `docs/current/hdcp-receiver-build.md` and the
+  timing investigation). No negative-slack bitstream is loaded.
