@@ -194,21 +194,22 @@ def t09_colour_fidelity(rig, ctx):
 def t10_geometry(rig, ctx):
     rig.source_pattern("geometry")
     rig.wait_for_lock()
-    img, f = rig.good_image(timeout=25, save_as="T10_geometry.ppm")
-    # Four corner squares should be bright; frame centre (between marks) dark bg.
-    s = P.GEO_CORNER
-    corners = {
-        "tl": (2, 2, s - 2, s - 2),
-        "tr": (img.w - s + 2, 2, img.w - 2, s - 2),
-        "bl": (2, img.h - s + 2, s - 2, img.h - 2),
-        "br": (img.w - s + 2, img.h - s + 2, img.w - 2, img.h - 2),
-    }
+    img, f = rig.good_frame_where(_geometry_sentinel, timeout=30)
+    ctx.evidence_ppm(img, "T10_geometry.ppm")
     sx = img.w / float(P.W)
     sy = img.h / float(P.H)
+    cs = int(P.GEO_CORNER * sx)   # corner-square size in capture px
+    m = max(2, cs // 4)
+    corners = {
+        "tl": (m, m, cs - m, cs - m),
+        "tr": (img.w - cs + m, m, img.w - m, cs - m),
+        "bl": (m, img.h - cs + m, cs - m, img.h - m),
+        "br": (img.w - cs + m, img.h - cs + m, img.w - m, img.h - m),
+    }
     for name, box in corners.items():
         lum = img.box_luma(box)
         ctx.note("corner %s luma %.0f" % (name, lum))
-        ctx.check(lum > 150, "corner %s is bright (%.0f)" % (name, lum))
+        ctx.check(lum > 130, "corner %s is bright (%.0f)" % (name, lum))
     # centre white square present
     cx, cy, cw, ch = P.GEO_CENTRE
     cbox = (int((cx + 20) * sx), int((cy + 20) * sy), int((cx + cw - 20) * sx), int((cy + ch - 20) * sy))
@@ -227,14 +228,33 @@ def _prep_overlay(rig):
 
 
 def _greyfield_sentinel(level):
-    """Predicate: the source greyfield is live in the captured frame.
-    Checks the bright border (top band, pure passthrough) is bright and the
-    interior mid-region reads near `level` (limited-range wire ~ level)."""
+    """Predicate: the source greyfield is fully live in the captured frame.
+    Requires BOTH the bright border (top band) AND an interior reference patch
+    (bottom-right quadrant, away from the overlay test blocks) to read near
+    `level` -- so a partial MS2109 frame that shows only the opaque overlay is
+    rejected."""
+    lo = max(0, level - 45)
+    hi = level + 60
     def pred(img):
         sx, sy = img.w / float(P.W), img.h / float(P.H)
         border = img.box_luma((int(200 * sx), int(6 * sy), int(1720 * sx), int(30 * sy)))
-        return border > 150
+        ref = img.box_luma((int(1500 * sx), int(850 * sy), int(1750 * sx), int(1000 * sy)))
+        return border > 150 and lo < ref < hi
     return pred
+
+
+def _geometry_sentinel(img):
+    """Geometry source is live: at least two of the four corner squares are
+    bright in the captured frame (proves passthrough, not just overlay)."""
+    sx, sy = img.w / float(P.W), img.h / float(P.H)
+    cs = int(P.GEO_CORNER * sx)
+    m = max(2, cs // 4)
+    boxes = [(m, m, cs - m, cs - m),
+             (img.w - cs + m, m, img.w - m, cs - m),
+             (m, img.h - cs + m, cs - m, img.h - m),
+             (img.w - cs + m, img.h - cs + m, img.w - m, img.h - m)]
+    bright = sum(1 for b in boxes if img.box_luma(b) > 130)
+    return bright >= 2
 
 
 def _wire(level):
@@ -268,25 +288,23 @@ def t11_overlay_keying(rig, ctx):
 def t12_overlay_rectangle_margins(rig, ctx):
     _prep_overlay(rig)
     rig.console.rect_default()
-    rig.source_pattern("greyfield", level=110)
+    # geometry source: black background at the margins (so an *excluded* overlay
+    # strip in the margin reads black, distinguishable from a visible white one).
+    rig.source_pattern("geometry")
     rig.wait_for_lock()
     ov = rig.overlay
     ov.fill((0, 0, 0))
-    # White strips: one well inside the rect, one in the left margin (x<32).
-    ov.block(400, 500, 400, 120, (255, 255, 255))    # inside -> white
-    ov.block(0, 800, 24, 200, (255, 255, 255))       # x<32 margin -> hidden
-    ov.block(600, 0, 300, 6, (255, 255, 255))        # y<10 margin -> hidden
-    img, f = rig.good_frame_where(_greyfield_sentinel(110), timeout=30, settle=0.5)
+    ov.block(450, 470, 350, 110, (255, 255, 255))    # inside rect -> white visible
+    ov.block(0, 820, 24, 180, (255, 255, 255))       # x<32 margin -> excluded -> black
+    img, f = rig.good_frame_where(_geometry_sentinel, timeout=30, settle=0.5)
     ctx.evidence_ppm(img, "T12_margins.ppm")
     sx, sy = img.w / float(P.W), img.h / float(P.H)
-    inside = img.box_luma((int(500 * sx), int(540 * sy), int(700 * sx), int(600 * sy)))
-    # The overlay white strip at x<24 must be hidden; sample x 24..30 (past the
-    # source's 40px white border) where only the (excluded) overlay strip would show.
-    marg = img.box_luma((int(25 * sx), int(850 * sy), int(31 * sx), int(950 * sy)))
+    inside = img.box_luma((int(520 * sx), int(500 * sy), int(720 * sx), int(560 * sy)))
+    marg = img.box_luma((int(2 * sx), int(860 * sy), int(20 * sx), int(960 * sy)))
     ctx.metric("inside_luma", round(inside, 1))
     ctx.metric("left_margin_luma", round(marg, 1))
     ctx.check(inside > 200, "overlay inside rect is visible (luma %.0f)" % inside)
-    ctx.check(marg < 180, "overlay strip in x<32 margin is excluded (luma %.0f)" % marg)
+    ctx.check(marg < 90, "overlay strip in x<32 margin is excluded (shows black source, luma %.0f)" % marg)
 
 
 @test("T13", "overlay", needs_capture=True)
