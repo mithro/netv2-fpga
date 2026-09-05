@@ -322,3 +322,29 @@ Net: goal-1 "NeTV2 locks to 1080p60" holds both as pixel-lock (always) and as
 reported resolution (with the CEA-mode fix). Reliable lock indicators for the
 test suite: pixel clock == 148.49 MHz, char-sync 111, chansync 1, WER 0,
 resdetect 1920x1080, and capture luma max > 20.
+
+### 19:15 — Capture intermittency is the MS2109, not the NeTV2 (decisive)
+
+Concurrent test: `debug input0` serial trace + capture-signal polling for 15 s.
+- NeTV2 side: 232 debug samples, **WER == 0 on every one**, `chansync:1`,
+  `res:1920x1080` throughout. The input lock and the output are perfectly
+  stable.
+- Capture side: only 7/53 samples carried signal (luma>20); the rest were the
+  MS2109 "no signal" frame (luma 7). Dropouts do **not** coincide with any
+  NeTV2 WER event (there are none).
+
+Conclusion: the NeTV2 works correctly. The **MS2109 USB capture dongle**
+(MACROSILICON 345f:2109) intermittently loses HDMI sync to the NeTV2's stable
+1080p60 output and emits a frozen "no signal" JPEG (fixed 97811 bytes). The
+duty cycle degraded from ~100 % at session start (a clean skip-400 capture) to
+~9-13 % after an hour of HPD toggling / heat. A USB unbind/bind re-enumerated
+the device (MACROSILICON UVC 1.00) but did not restore a high duty cycle.
+
+Two clean, fully-correct verification frames were captured and saved to
+`evidence/`: the earliest (console + MagicMirror overlay) and one showing the
+agent's colour-bar + grey-ramp test pattern with the overlay keyed on top
+(`recover.ppm`). These prove the whole chain end-to-end.
+
+Implication for the suite: the capture path must reset the card at start,
+measure the capture **duty cycle** as an explicit health metric, and select
+signal-bearing frames from a burst rather than assuming every frame is valid.
