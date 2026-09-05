@@ -87,3 +87,27 @@ Findings:
 > sub-agent is unable to find any functionality that has not had an automated
 > test verify correct function. The complete test suite must run end-to-end on
 > the device without intervention.
+
+### 15:55 — Stopped the crash-looping pm2 `netv2-status` reader on rpi3-netv2
+
+`pm2-pi.service` runs two apps: `mm` (MagicMirror) and `netv2-status` (node
+serial reader on /dev/ttyS0 feeding http://127.0.0.1:6502 for the MMM-json-feed
+module). `netv2-status` had **1,912,747 restarts** (crash loop, ~1/s). Stopped it
+with `~/n/bin/pm2 stop netv2-status` so the console is usable. To restore:
+`~/n/bin/pm2 start netv2-status`. `mm` left running.
+
+### 16:00 — rpiz-3 login confirmed; HDMI connector is *disconnected*
+
+`ssh tim@rpiz-3.welland.mithis.com` works, passwordless sudo OK. Host is
+headless (`multi-user.target`, agetty on tty1, no X/wayland). Boot config
+uses `dtoverlay=vc4-kms-v3d`, `disable_fw_kms_setup=1`, no forced HDMI mode;
+`kms++-utils` (`kmstest`, `kmsprint`) is installed — useful for test patterns.
+
+```
+/sys/class/drm/card0-HDMI-A-1: status=disconnected enabled=disabled
+```
+
+So the Pi Zero is currently outputting **nothing** on HDMI: with the KMS
+driver, no hotplug (HPD) => no mode set => no signal. Consistent with the
+NeTV2 reporting input0 = 0x0. Next: check whether the NeTV2 presents
+HPD/EDID on its HDMI input, and force a 1080p60 mode on the Pi Zero if needed.
