@@ -1,7 +1,8 @@
 # NeTV2 modernisation: design
 
-Status: v2.1, 2026-09-05 (v1 reviewed for completeness and technical feasibility,
-v2 re-reviewed for completeness; this version incorporates all three reviews). Author: Claude (Fable 5.1) working for
+Status: v2.3, 2026-09-05 (v1 reviewed for completeness and technical feasibility,
+v2 re-reviewed for completeness; v2.3 adds corrections found while reviewing the
+phase 0/1 plan). Author: Claude (Fable 5.1) working for
 Tim Ansell (mithro).
 
 ## 1. Goal
@@ -65,7 +66,7 @@ costs the most.
 | 30 | PCIe target parameters (new) | `pcie_x1`, `data_width=64`, `address_width=64` (Pi 5 has RAM above 4 GB), LitePCIe default IDs so the endpoint enumerates as **10ee:7021** (7020 + lanes); the stock 2018 design's kernel module expected 10ee:7022. After JTAG programming the Pi 5 root port is retrained by unbind/rebind of `1000110000.pcie` or a reboot; with the bitstream in NOR the endpoint is up before Linux scans. |
 | 31 | HDCP and audio (new) | Data-island payloads are encrypted under HDCP, so extract and inject operate only when input0 is unencrypted; the firmware refuses to enable them while the HDCP cipher is active and the docs say so. |
 | 32 | Simulation strategy (new) | Core logic (TMDS/TERC4 encode and decode tables, BCH ECC, packet framing, chroma-key mux, rectangle, DMA ring, `frame_crc`) is unit-tested in migen simulation with behavioural stand-ins for Xilinx primitives (ISERDES/OSERDES/MMCM/IDELAY modelled as Python). Serdes-level checks use Vivado `xsim` with `unisims` via cocotb, run only on the desktop. |
-| 33 | REPL output as a contract (new) | The text format of every command the suite's `netv2test/console.py` issues (`help`, `dna`, `status`, `json`, `xadc_c`, `debug input0 on/off`, `debug rect/rectoff/override/stop/run/hpdforce/dumpe/mmcm`, `hpd` force/relax/toggle, `pipe override`, `overlay dma run/stop`, `video_mode [n]`, `video_matrix`, the rectangle and chroma commands) plus `t4i`/`t4d` and `dvimode0`/`hdmimode0` is frozen as `docs/current/repl-contract.md`, generated in phase 0 from that file. New commands are additive. Generated CSR accessor names may change freely. |
+| 33 | REPL output as a contract (new) | The text format of every command the suite's `netv2test/console.py` issues (`help`, `dna`, `status`, `json`, `xadc_c`, `debug input0 on/off`, `debug rect/rectoff/override/stop/run/hpdforce/dumpe/mmcm`, `hpd` force/relax/toggle, `pipe override`, `overlay dma run/stop`, `video_mode [n]`, `video_matrix`, the rectangle and chroma commands) plus `debug t4i`/`debug t4d` and `debug dvimode0`/`debug hdmimode0` is frozen as `docs/current/repl-contract.md`, generated in phase 0 from that file. New commands are additive. Generated CSR accessor names may change freely. |
 | 34 | SPI flash layout and image format (new) | Layout preserved: bitstream copies at 0 and mid-flash, firmware at 0x7b0000 (320 KB available, stock image 69,524 B). The old `mknetv2img -f` byte-swapped 32-bit words for the old SpiFlash core; LiteSPI reads linearly, so the new updater writes plain little-endian images with the LiteX boot header (length, CRC32) and refuses to run on IDCODE 0x0362d093 when the host is `rpi3-netv2`. Bitstream properties `SPI_BUSWIDTH 2` / `CONFIGRATE 66` are Vivado-only; openXC7 bitstreams configure at the slow default (documented). |
 | 35 | Platform pads (new) | `netv2/platform.py` takes `cable="pcb"|"cable"` for the input1 (overlay) pair inversions. **Per host**: `rpi3-netv2` uses `pcb` (M2M jumper to the Pi 3B+); `rpi5-netv2` uses `cable` because a Pi 5 has micro-HDMI and can only reach input1 through a cable. Whether the Pi 5's HDMI is cabled to input1 at all is unknown; phase 4's overlay-lock proof on rpi5 is conditional on it and the report asks the user if the link is absent. The platform also adds the pins litex-boards lacks: `hpd_notif` (U17), `hdmi_sda_over_up/dn`, `hdmi_rx0_forceunplug/forceplug`, `hdmi_tx1_hpd_n`, `hdmi_ov0_hpd_n`, CEC, `fan_pwm`, `fpga_led0..5`, plus the `write_cfgmem -interface spix2` and CONFIGRATE commands. |
 | 36 | Feature matrix per part (new) | Every feature is tagged for 35T, 100T or both, gated by a utilisation and timing report after each gateware phase. Audio extract must fit the 35T because the audio rig is the 35T unit; PCIe and audio inject-into-passthrough are 100T-first. |
@@ -101,9 +102,9 @@ overlay be re-encrypted on encrypted links. Multi-resolution autodetect (720p,
 
 Firmware (`firmware/`, C, RISC-V): a serial REPL (`status`, `json`, `debug`,
 `video_mode`, `video_matrix`, rectangle and chroma commands, EDID, MMCM DRP
-tables, `t4i` to enable the TERC4 interrupt and `t4d` to print island packet and
-character counters, noting that `t4d` prints input1's counter while labelling it
-"hdmi0"), loaded from SPI NOR by the LiteX BIOS. Pi side
+tables, `debug t4i` to enable the TERC4 interrupt and `debug t4d` to print island
+packet and character counters, noting that `t4d` prints input1's counter while
+labelling it "hdmi0"), loaded from SPI NOR by the LiteX BIOS. Pi side
 (`netv2mvp-scripts`): OpenOCD configs for the Alphamax OpenOCD fork
 (bcm2835gpio), one-click SPI update, MagicMirror overlay app under pm2 with a
 JSON status feed. Factory test: exclave (Rust) + `netv2-tests` scenarios +
@@ -191,7 +192,7 @@ New cores:
   state machine, splits islands into 32-character packets, checks header and
   subpacket BCH ECC, and exposes a decoded packet stream (type, header, four
   subpackets, ECC ok). Used by extract, by inject-into-passthrough, and by the
-  `t4d` diagnostics.
+  `debug t4d` diagnostics.
 - `audio/extract`: consumes Audio Sample Packets (0x02), ACR (0x01) and Audio
   InfoFrame (0x84); honours sample-present and layout flags; writes IEC 60958
   subframes (with channel status, V/U/P bits) plus sequence numbers into a DDR
@@ -296,7 +297,7 @@ fixed or explicitly waived in the PR description.
 | Phase | Deliverable | Hardware proof / exit criterion |
 |-------|-------------|----------------|
 | 0 Repo setup | forks, `modern`, layout, uv project with pins, migen mirror, `LOG.md`, subtree of test suite, docs skeleton, REPL contract draft | none |
-| 1 Baseline | `docs/original/*`; baseline suite report from `rpi3-netv2` on stock bitstream; `t4i` then `t4d` (which yields input1's packet/character counts under an "hdmi0" label and input0's last BCH capture words, so input0 evidence is presence/absence only) and direct `rpiz-3` to MS2109 audio measurement (feeds 7a); time-boxed (1 day) rebuild of the 2019 design in a `python:3.7` container with Vivado 2025.2 | rpi3 report |
+| 1 Baseline | `docs/original/*`; baseline suite report from `rpi3-netv2` on stock bitstream; `debug t4i` then `debug t4d` (which yields input1's packet/character counts under an "hdmi0" label and input0's last BCH capture words, so input0 evidence is presence/absence only) and direct `rpiz-3` to MS2109 audio measurement (feeds 7a); time-boxed (1 day) rebuild of the 2019 design in a `python:3.7` container with Vivado 2025.2 | rpi3 report |
 | 2a Modern base, Vivado | `targets/base.py` for a7-35 and a7-100 in both DDR configurations (decision 29); firmware skeleton; serial boot path; utilisation baseline | BIOS + `Memtest OK` on rpi5 (100T) and rpi3 (35T, volatile), both PHY options characterised |
 | 2b openXC7 base | `targets/base.py` on openXC7 0.9.3+ for both parts; per-primitive status table (ISERDES from pad, IBUFDS_DIFF_OUT, OSERDES 10:1, MMCME2_ADV lock, DRP, BUFIO/BUFR, IDELAYCTRL) from tiny probe designs | `Memtest OK` three times on each part, or a documented root cause for each failure. Runs in parallel with 3a; does not gate it |
 | 3a HDMI passthrough | `gateware/video/` input0 + raw output ported; input1 clocking and decoding (lock only, no DMA); REPL contract subset needed by T01–T09 (help, dna, status, debug input0, hpd, edid) ported; no DDR use | rpi3 suite T01–T09 pass; utilisation and timing gate for 35T |
@@ -306,7 +307,7 @@ fixed or explicitly waived in the PR description.
 | 5 openXC7 overlay feasibility | `targets/overlay.py` build attempt on openXC7 for both parts; STA numbers; gap list per primitive and per timing exception; minimal restructuring proposal (registered gearbox, fixed-ratio MMCM per resolution) and, if it routes and locks, a hardware run | Report committed; if a bitstream locks on input0, rpi3 T01–T09 attempted and recorded either way |
 | 6a PCIe endpoint | `targets/pcie.py` (100T), kernel module, DMA loopback, retrain helper | rpi5 `lspci` shows 10ee:7021 x1 Gen2, BAR CSR reads match UART, DMA loopback error-free for 1 GB |
 | 6b PCIe framebuffer to HDMI | host writes framebuffer over PCIe into the overlay DDR buffer; uses the phase 3c self-timed output | `frame_crc` of the output matches the CRC the host computes over its framebuffer, with no HDMI source connected |
-| 7a Audio diagnosis | `t4d` counts on both inputs, parser core, first captured real islands, root cause of T23 silence | Report: islands present/absent at input0 and output0; T23 unskipped if passthrough audio works |
+| 7a Audio diagnosis | `debug t4d` counts on both inputs, parser core, first captured real islands, root cause of T23 silence | Report: islands present/absent at input0 and output0; T23 unskipped if passthrough audio works |
 | 7b Audio extract | extract core + DMA ring + firmware `audio` + `netv2ctl` | rpi3 rig: 1 kHz tone from `rpiz-3` recovered from the DDR ring, frequency within 1 %; fits the 35T |
 | 7c Audio inject, self-timed | inject core on the phase 3c self-timed output; AVI/GCP/Audio InfoFrame | rpi3 rig: MS2109 ALSA capture of the injected tone, frequency within 1 %, no underruns over 10 min |
 | 7d Audio inject into passthrough (optional) | source audio stripped and replaced | rpi3 rig: T23-style capture hears the injected tone while video passes through |

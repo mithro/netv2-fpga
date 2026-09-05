@@ -8,7 +8,7 @@
 
 **Tech Stack:** git (subtree, submodules), uv 0.12, Python 3.13 (desktop) and 3.5 (golden unit), LiteX 2026.04 family, pytest, ssh to `pi@rpi3-netv2.iot.welland.mithis.com`, `tim@rpi5-netv2.iot.welland.mithis.com`, `ten64.welland.mithis.com`.
 
-**Spec:** `docs/superpowers/specs/2026-09-05-netv2-modernisation-design.md` (v2.2). Decisions referenced as D<n>.
+**Spec:** `docs/superpowers/specs/2026-09-05-netv2-modernisation-design.md` (v2.3). Decisions referenced as D<n>.
 
 **Hard rules for every task (D6, D8):** never write SPI flash, never power-cycle, never re-image `rpi3-netv2`. On `rpi3-netv2` the only permitted actions in this plan are running the existing test suite and reading the serial console. No bitstream is loaded onto any board in phases 0 or 1.
 
@@ -151,7 +151,14 @@ Submodules must be moved one at a time with `git mv` so `.gitmodules` paths are 
 Run: `git submodule status | tee /home/tim/github/AlphamaxMedia/tmp/submodules-before.txt`
 Expected: seven lines (`deps/litedram`, `deps/liteeth`, `deps/litescope`, `deps/litevideo`, `deps/litex`, `deps/migen`, `deps/pyserial`).
 
-- [ ] **Step 2: Move submodules individually, then the rest**
+- [ ] **Step 2: Remove the untracked leftover and move submodules individually, then the rest**
+
+`deps/litepcie/` is an untracked directory left behind by the earlier xobs `quickstart` checkout (that branch had a litepcie submodule; AlphamaxMedia master does not). `git mv` would abort on it, so delete it first:
+
+```bash
+git ls-files deps/litepcie | wc -l   # expected 0: not tracked on this branch
+rm -rf deps/litepcie
+```
 
 Write and run `scripts/_move_legacy.py` (deleted at the end of this task; it is a one-off):
 
@@ -166,6 +173,10 @@ def git(*args):
     print("git", *args, flush=True)
     subprocess.run(["git", *args], check=True)
 
+def tracked(path):
+    out = subprocess.run(["git", "ls-files", "--error-unmatch", str(path)], capture_output=True)
+    return out.returncode == 0
+
 pathlib.Path("legacy/deps").mkdir(parents=True, exist_ok=True)
 for name in SUBMODULES:
     git("mv", f"deps/{name}", f"legacy/deps/{name}")
@@ -175,9 +186,15 @@ for p in sorted(pathlib.Path(".").iterdir()):
         continue
     if p.name == "deps":
         for q in sorted(p.iterdir()):
-            git("mv", str(q), f"legacy/deps/{q.name}")
+            if tracked(q):
+                git("mv", str(q), f"legacy/deps/{q.name}")
+            else:
+                print("skip untracked", q)
         continue
-    git("mv", str(p), f"legacy/{p.name}")
+    if tracked(p):
+        git("mv", str(p), f"legacy/{p.name}")
+    else:
+        print("skip untracked", p)
 # the original docs/ directory (not ours) lives at docs/ too: move its files
 for q in sorted(pathlib.Path("docs").iterdir()):
     if q.name in {"superpowers", "original", "current", "testing"}:
@@ -233,7 +250,7 @@ git push mithro 4c2ae8dfeea37f235b52acb8166f12acaaae4f7c:refs/heads/netv2-pin
 cd /home/tim/github/AlphamaxMedia/netv2-fpga
 ```
 
-Expected: `rev-parse` prints the SHA (object present after fetch); push reports `[new branch] ... -> netv2-pin`.
+Expected: `rev-parse` prints the SHA (object present after fetch); push reports `[new branch] ... -> netv2-pin`. If `rev-parse` fails because the SHA is not on `master`, fetch it directly: `git fetch mlabs 4c2ae8dfeea37f235b52acb8166f12acaaae4f7c`.
 
 - [ ] **Step 2: Verify on GitHub**
 
@@ -284,7 +301,7 @@ Expected: errors (`No module named pytest` or `PackageNotFoundError`).
 name = "netv2"
 version = "0.1.0"
 description = "Kosagi/Alphamax NeTV2 gateware, firmware, host tools and tests, on LiteX 2026.04"
-readme = "README.adoc"
+readme = { file = "README.adoc", content-type = "text/plain" }
 requires-python = ">=3.11"
 license = "BSD-2-Clause"
 dependencies = [
@@ -330,6 +347,7 @@ packages = ["netv2"]
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/hardware"]
 addopts = "-q"
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100
@@ -396,7 +414,7 @@ git add Makefile && git commit -m "build: add Makefile entry points (sync, test,
 
 ### Task 6: Merge the HDMI test suite as a subtree
 
-The suite is already fetched as remote `ten64-testsuite` (branch `main`, 47 commits). D4 puts it in-repo; the prefix is `tests/hdmi-suite/` so that its own `netv2test/` package keeps its name (the spec said `tests/netv2test/`; this task also fixes that wording in the spec).
+The suite is already fetched as remote `ten64-testsuite` (branch `main`, 51 commits as of 2026-09-05; run `git fetch ten64-testsuite` first to pick up anything newer). D4 puts it in-repo; the prefix is `tests/hdmi-suite/` so that its own `netv2test/` package keeps its name (the spec said `tests/netv2test/`; this task also fixes that wording in the spec).
 
 - [ ] **Step 1: Confirm `git subtree` is available**
 
@@ -409,14 +427,14 @@ Expected: usage text. If missing: `sudo apt install git` provides it on Debian (
 git fetch ten64-testsuite
 git subtree add --prefix=tests/hdmi-suite ten64-testsuite/main -m "tests: import the NeTV2 HDMI test suite from ten64 as a subtree
 
-Source: ten64.welland.mithis.com:~/github/mithro/netv2 (47 commits, no remote).
+Source: ten64.welland.mithis.com:~/github/mithro/netv2 (51 commits, no remote).
 Runs on the Pi attached to the board; see tests/hdmi-suite/README.md."
 ```
 
 - [ ] **Step 3: Verify**
 
-Run: `ls tests/hdmi-suite && git log --oneline -1 && git log --oneline tests/hdmi-suite | wc -l`
-Expected: `LOG.md README.md RESOURCES.md agent docs evidence netv2test reports scripts`; the merge commit; history count of at least 47.
+Run: `ls tests/hdmi-suite && git log --oneline -1 && git rev-list --count HEAD^2`
+Expected: `LOG.md README.md RESOURCES.md agent docs evidence netv2test reports scripts`; the merge commit; the second parent's history count is at least 51 (a path-filtered `git log tests/hdmi-suite` would show only the merge, because the imported commits have their files at the root).
 
 Run: `cd tests/hdmi-suite && uv run --no-project python -c "import ast,sys; [ast.parse(open(f).read(), f) for f in sys.argv[1:]]; print('ok')" netv2test/*.py && cd -`
 Expected: `ok` (the suite is Python 3.5 code; it must still parse on 3.13).
@@ -453,6 +471,8 @@ class Console:
         self.command("video_mode %d" % n)
     def other(self):
         console.command("video_matrix list")
+    def json_mode(self, on):
+        return self.command("json on" if on else "json off")
 '''
 
 
@@ -462,6 +482,8 @@ def test_extract_commands_finds_literal_and_formatted():
     assert ("debug setrect %d %d %d %d", "console.py") in cmds
     assert ("video_mode %d", "console.py") in cmds
     assert ("video_matrix list", "console.py") in cmds
+    assert ("json on", "console.py") in cmds
+    assert ("json off", "console.py") in cmds
 
 
 def test_render_markdown_has_table_rows_sorted():
@@ -492,14 +514,24 @@ import argparse
 import re
 from pathlib import Path
 
-CMD_RE = re.compile(r'\.command\(\s*"([^"]+)"')
+# A .command( call and everything up to the closing parenthesis on that line. The
+# suite writes literals, %-formatted literals, and conditional expressions such as
+# .command("json on" if on else "json off"); every "..." literal inside counts.
+CALL_RE = re.compile(r'\.command\((.*?)\)\s*$', re.MULTILINE)
+LIT_RE = re.compile(r'"([^"]+)"')
 
 # Commands exercised interactively during phase 1 but not by the suite (spec D33).
-EXTRA = [("t4i", "manual"), ("t4d", "manual"), ("dvimode0", "manual"), ("hdmimode0", "manual")]
+# They live under the firmware's `debug` sub-parser (legacy/firmware/ci.c line 991 on).
+EXTRA = [("debug t4i", "manual"), ("debug t4d", "manual"),
+         ("debug dvimode0", "manual"), ("debug hdmimode0", "manual")]
 
 
 def extract_commands(source: str, origin: str) -> set[tuple[str, str]]:
-    return {(m.group(1), origin) for m in CMD_RE.finditer(source)}
+    out: set[tuple[str, str]] = set()
+    for call in CALL_RE.finditer(source):
+        for lit in LIT_RE.finditer(call.group(1)):
+            out.add((lit.group(1), origin))
+    return out
 
 
 def render_markdown(cmds: set[tuple[str, str]], date: str) -> str:
@@ -540,7 +572,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: Run tests, then generate**
 
 Run: `uv run pytest tests/unit/test_gen_repl_contract.py -q && uv run python scripts/gen_repl_contract.py --date 2026-09-05 && head -30 docs/current/repl-contract.md`
-Expected: 2 passed; about 25 commands including `status`, `json`, `help`, `debug input0`, `debug setrect %d %d %d %d`, `video_mode %d`, `video_matrix list`, `hdp_toggle %d`.
+Expected: 2 passed; about 28 commands including `status`, `json on`, `json off`, `help`, `debug input0`, `debug stop`, `debug run`, `debug setrect %d %d %d %d`, `video_mode %d`, `video_matrix list`, `hdp_toggle %d`, plus the four `debug t4i`-style extras. If `debug stop` is missing the regex is wrong; do not proceed.
 
 - [ ] **Step 5: Commit**
 
@@ -766,7 +798,7 @@ git commit -m "docs(original): clocking, firmware REPL, and boot/flash layout"
 
 **Files:**
 - Create the two files
-- Read: `/home/tim/github/AlphamaxMedia/netv2mvp-scripts/` (all), `/home/tim/github/AlphamaxMedia/netv2-tests/` (`README.md`, `*.test`, `*.scenario`, `netv2.jig`), `/home/tim/github/AlphamaxMedia/exclave/README.md`, `/home/tim/github/AlphamaxMedia/jig-20-interface-http/README.md`, `/home/tim/github/AlphamaxMedia/usb-pyromaniac/README.md`, `/home/tim/github/AlphamaxMedia/netv2-fpga.wiki/*.md`, and the live golden unit: `ssh pi@rpi3-netv2.iot.welland.mithis.com 'ls ~/code; cat ~/mm.sh ~/start_mm ~/stop_mm; systemctl list-units --type=service --state=running --no-pager; crontab -l'` (read-only).
+- Read: `/home/tim/github/AlphamaxMedia/netv2mvp-scripts/` (all), `/home/tim/github/AlphamaxMedia/netv2-tests/` (`README.md`, `*.test`, `*.scenario`, `netv2.jig`), `/home/tim/github/AlphamaxMedia/exclave/README.md`, `/home/tim/github/AlphamaxMedia/jig-20-interface-http/README.md`, `/home/tim/github/AlphamaxMedia/usb-pyromaniac/README.md`, `/home/tim/github/AlphamaxMedia/netv2-fpga.wiki/*.md`, and the live golden unit: `ssh pi@rpi3-netv2.iot.welland.mithis.com 'ls ~/code; cat ~/mm.sh ~/start_mm ~/stop_mm; /home/pi/n/bin/pm2 list; systemctl list-units --type=service --state=running --no-pager; crontab -l'` (read-only; some files may be missing, which is itself a finding).
 
 - [ ] **Step 1: `pi-software.md`**: the shipped image (Raspbian 9, Python 3.5, OpenOCD 0.10 fork with bcm2835gpio), `~/code` layout, MagicMirror + `MMM-json-feed` + `netv2-status.js` + pm2 `mm.sh`, the one-click updater desktop icon flow, `set_res.sh`/`set_ycrcb.sh`, `flterm --kernel`. Wiki pages summarised with links.
 
@@ -803,7 +835,9 @@ Expected (about 15 minutes): final line with `PASS 29 / FAIL 0 / BLOCKED n / SKI
 
 ```bash
 mkdir -p docs/testing/reports/2026-09-baseline
-scp -r "pi@rpi3-netv2.iot.welland.mithis.com:~/reports/$(ssh pi@rpi3-netv2.iot.welland.mithis.com 'ls ~/reports | tail -1')/*" docs/testing/reports/2026-09-baseline/
+NEWEST=$(ssh pi@rpi3-netv2.iot.welland.mithis.com 'ls -d ~/reports/2*/ | sort | tail -1')   # reports/ also holds README.md and latest/
+echo "$NEWEST"
+scp -r "pi@rpi3-netv2.iot.welland.mithis.com:${NEWEST}*" docs/testing/reports/2026-09-baseline/
 ls docs/testing/reports/2026-09-baseline
 ```
 Expected: `report.json`, `report.md`, evidence PNGs.
@@ -853,7 +887,7 @@ def test_audio_descriptor_decoded():
 
 def test_no_audio_when_flag_clear():
     blk = bytearray(CTA)
-    blk[3] = 0x71  # clear bit 6 (basic audio)
+    blk[3] = 0xB1  # 0xF1 with bit 6 (basic audio) cleared
     assert has_basic_audio(bytes(blk)) is False
 ```
 
@@ -939,12 +973,12 @@ Over the golden unit's console (read-only commands), using the suite's own conso
 ```bash
 ssh pi@rpi3-netv2.iot.welland.mithis.com 'cd ~ && python3 - <<EOF
 from netv2test.console import Console
-c = Console("/dev/ttyS0")
-for cmd in ["status", "t4i", "t4d", "t4d"]:
+c = Console(port="/dev/ttyS0", baud=115200)
+for cmd in ["status", "debug t4i", "debug t4d", "debug t4d"]:
     print("=== " + cmd); print(c.command(cmd))
 EOF' | tee docs/testing/reports/2026-09-baseline/t4d.txt
 ```
-If the `Console` constructor signature differs, read `tests/hdmi-suite/netv2test/console.py` first and adapt; do not guess. Expected: `status` shows `input0: 1920x1080`; `t4d` prints `hdmi0 terc4 packet cnt: N, char cnt: M` (these are input1's counters, `ci.c:1155`) and five BCH words (input0's last capture). Record N, M and whether the BCH words are nonzero (nonzero means input0 has seen at least one data island).
+(`Console(port, baud)` and `command(cmd, timeout=3.0)` are the real API in `tests/hdmi-suite/netv2test/console.py`; `t4i`/`t4d` are sub-commands of `debug`, `legacy/firmware/ci.c` lines 991, 1141, 1154; the bare words print nothing.) Expected: `status` shows `input0: 1920x1080`; `debug t4d` prints `hdmi0 terc4 packet cnt: N, char cnt: M` (these are input1's counters, `ci.c:1155`) and five BCH words (input0's last capture). Record N, M and whether the BCH words are nonzero (nonzero means input0 has seen at least one data island).
 
 Then on the source: `ssh rpiz-3.iot.welland.mithis.com 'cat /proc/asound/cards; ls /proc/asound/card*/eld* 2>&1; for f in /proc/asound/card*/eld*; do echo "== $f"; cat $f; done'` (if the host key is unknown to this desktop, run it from `rpi3-netv2` instead, which already trusts `rpiz-3`). Append the output to `t4d.txt` under a heading. `eld_valid 1` with `monitor_present 1` and `sad_count 0` or `eld_valid 0` means the source believes the sink has no audio.
 
@@ -960,7 +994,7 @@ git commit -m "test(baseline): TERC4 counters, source ELD state and sink EDID au
 **Files:**
 - Create: `docs/original/rebuild-2019.md`, `legacy/Dockerfile.rebuild2019`
 
-Purpose: establish whether the original design can still be regenerated (Verilog from migen) and synthesised (Vivado 2025.2). Stop at the time box; the outcome is documented either way. Build outputs go under `legacy/build/` (git-ignored by the legacy `.gitignore` rule `build`).
+Purpose: establish whether the original design can still be regenerated (Verilog from migen) and synthesised (Vivado 2025.2). Stop at the time box; the outcome is documented either way. Build outputs go under `legacy/build/` (git-ignored by the root `.gitignore` rule `build`, which matches at any depth).
 
 - [ ] **Step 1: Initialise the legacy submodules**
 
@@ -974,25 +1008,47 @@ Expected: seven checkouts at the pinned SHAs. Do not recurse into `legacy/deps/l
 ```dockerfile
 FROM python:3.7-slim
 RUN apt-get update && apt-get install -y --no-install-recommends make git libtinfo5 libx11-6 libxrender1 libxtst6 libxi6 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends gcc-riscv64-unknown-elf && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir pyserial==3.4 colorama
 WORKDIR /work
 ENV PATH=/opt/Xilinx/2025.2/Vivado/bin:$PATH
 ```
 
-- [ ] **Step 3: Generate Verilog only (no Vivado) first**
+- [ ] **Step 3: Generate Verilog only (no Vivado, no firmware) first**
+
+`legacy/netv2mvp.py`'s `main()` (lines 1273 to 1300) accepts only `-p`, `-t`, `-d`, `-c`, and its `Builder` always compiles the BIOS before writing Verilog; `lxbuildenv` also exits unless Vivado and a RISC-V compiler are found or `--lx-ignore-deps` is given. So add a driver, `legacy/rebuild2019_verilog.py` (this is the one file added under `legacy/`, clearly marked as 2026 tooling):
+
+```python
+#!/usr/bin/env python3
+"""2026 tooling: regenerate the 2019 VideoOverlaySoC Verilog without Vivado or a
+RISC-V toolchain. Run inside the rebuild2019 container with --lx-ignore-deps."""
+import lxbuildenv  # noqa: F401  must be first: re-execs with legacy deps on PYTHONPATH
+import sys
+from netv2mvp import Platform, VideoOverlaySoC
+from litex.soc.integration.builder import Builder
+
+part = sys.argv[1] if len(sys.argv) > 1 else "35"
+platform = Platform(part=part, cable="pcb")
+soc = VideoOverlaySoC(platform, part=part, dqs_phase="112.5")
+builder = Builder(soc, output_dir="build/verilog-only-%s" % part,
+                  compile_software=False, compile_gateware=False)
+builder.build()
+print("generated build/verilog-only-%s/gateware/top.v" % part)
+```
 
 ```bash
 docker build -t netv2-rebuild2019 -f legacy/Dockerfile.rebuild2019 legacy
-docker run --rm -v "$PWD/legacy:/work" netv2-rebuild2019 python3 netv2mvp.py --lx-help 2>&1 | tail -5
-docker run --rm -v "$PWD/legacy:/work" netv2-rebuild2019 python3 netv2mvp.py -p 35 --no-compile-gateware --no-compile-software 2>&1 | tail -20
+docker run --rm -v "$PWD/legacy:/work" netv2-rebuild2019 python3 rebuild2019_verilog.py 35 --lx-ignore-deps 2>&1 | tail -20
+ls -l legacy/build/verilog-only-35/gateware/top.v
 ```
-Read `legacy/netv2mvp.py` `main()` (about line 1273) for the exact flags first; `--no-compile-gateware` style flags come from LiteX 2019's `soc_sdram_args`. Expected best case: `legacy/build/gateware/top.v` produced. Record the exact error otherwise.
+Expected best case: `top.v` produced (tens of thousands of lines). `lxbuildenv` strips its own `--lx-*` flags before re-exec, so `sys.argv[1]` is still the part. Record the exact error otherwise (Python 3.7 vs the 2019 migen is the expected happy path; a `PYTHONHASHSEED` complaint means lxbuildenv did not re-exec).
 
 - [ ] **Step 4: If Verilog generated, attempt synthesis with Vivado 2025.2 (mount `/opt/Xilinx` read-only)**
 
 ```bash
-docker run --rm -v "$PWD/legacy:/work" -v /opt/Xilinx:/opt/Xilinx:ro -v "$HOME/.Xilinx:/root/.Xilinx:ro" netv2-rebuild2019 python3 netv2mvp.py -p 35 2>&1 | tail -30
+docker run --rm -v "$PWD/legacy:/work" -v /opt/Xilinx:/opt/Xilinx:ro -v "$HOME/.Xilinx:/root/.Xilinx:ro" netv2-rebuild2019 python3 netv2mvp.py -p 35 --lx-ignore-deps 2>&1 | tail -30
 ```
+This runs the original flow: BIOS compile with the container's `riscv64-unknown-elf-gcc` (the 2019 firmware expected `riscv64-unknown-elf-` too), then Vivado.
 Expected: either a bitstream at `legacy/build/gateware/top.bit` (record `ls -l` and the timing summary from `legacy/build/gateware/vivado.log`), or the first hard error. Vivado 2025.2 with the 2019-generated TCL is the most likely failure point; capture it verbatim.
 
 - [ ] **Step 5: Document**
@@ -1002,7 +1058,7 @@ Expected: either a bitstream at `legacy/build/gateware/top.bit` (record `ls -l` 
 - [ ] **Step 6: Commit, log, review, merge**
 
 ```bash
-git add docs/original/rebuild-2019.md legacy/Dockerfile.rebuild2019
+git add docs/original/rebuild-2019.md legacy/Dockerfile.rebuild2019 legacy/rebuild2019_verilog.py
 git commit -m "docs(original): time-boxed rebuild attempt of the 2019 design"
 ```
 Append to `LOG.md`: phase 1 summary with the baseline numbers, T23 evidence, and the rebuild outcome. Commit. Four-direction review of `git diff modern...phase1-baseline`, fix, then `git checkout modern && git merge --no-ff phase1-baseline -m "Merge phase 1: baseline" && git push mithro modern phase1-baseline`.
