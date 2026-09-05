@@ -1,0 +1,55 @@
+[project]
+name = "netv2"
+version = "0.1.0"
+description = "Kosagi/Alphamax NeTV2 gateware, firmware, host tools and tests, on LiteX 2026.04"
+readme = { file = "README.adoc", content-type = "text/plain" }
+requires-python = ">=3.11"
+license = "BSD-2-Clause"
+dependencies = [
+    "migen",
+    "litex",
+    "litex-boards",
+    "litedram",
+    "liteeth",
+    "litepcie",
+    "litespi",
+    "litescope",
+    "pythondata-cpu-vexriscv",
+    "pythondata-software-compiler-rt",
+    "pythondata-software-picolibc",
+    "pyserial>=3.5",
+    "meson>=1.0",
+    "ninja",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff"]
+
+[tool.uv.sources]
+migen = { git = "https://github.com/mithro/migen.git", rev = "4c2ae8dfeea37f235b52acb8166f12acaaae4f7c" }
+litex = { git = "https://github.com/enjoy-digital/litex.git", tag = "2026.04" }
+litex-boards = { git = "https://github.com/litex-hub/litex-boards.git", tag = "2026.04" }
+litedram = { git = "https://github.com/enjoy-digital/litedram.git", tag = "2026.04" }
+liteeth = { git = "https://github.com/enjoy-digital/liteeth.git", tag = "2026.04" }
+litepcie = { git = "https://github.com/enjoy-digital/litepcie.git", tag = "2026.04" }
+litespi = { git = "https://github.com/litex-hub/litespi.git", tag = "2026.04" }
+litescope = { git = "https://github.com/enjoy-digital/litescope.git", tag = "2026.04" }
+pythondata-cpu-vexriscv = { git = "https://github.com/litex-hub/pythondata-cpu-vexriscv.git", tag = "2026.04" }
+pythondata-software-compiler-rt = { git = "https://github.com/litex-hub/pythondata-software-compiler_rt.git", tag = "2026.04" }
+pythondata-software-picolibc = { git = "https://github.com/litex-hub/pythondata-software-picolibc.git", tag = "2026.04" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["netv2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit", "tests/hardware"]
+addopts = "-q"
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
