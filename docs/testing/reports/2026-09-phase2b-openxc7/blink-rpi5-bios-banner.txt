@@ -1,0 +1,46 @@
+M-^?
+^M^[[1m        __   _ __      _  __^[[0m
+^M^[[1m       / /  (_) /____ | |/_/^[[0m
+^M^[[1m      / /__/ / __/ -_)>  <^[[0m
+^M^[[1m     /____/_/\__/\__/_/|_|^[[0m
+^M^[[1m   Build your hardware, easily!^[[0m
+^M
+^M (c) Copyright 2012-2026 Enjoy-Digital
+^M (c) Copyright 2007-2015 M-Labs
+^M
+^M BIOS built on Sep  6 2026 08:21:59
+^M BIOS CRC passed (2e4ecd75)
+^M
+^M LiteX git sha1: c8c9242
+^M
+^M--================ ^[[1mSoC^[[0m =================--
+^M^[[1mCPU^[[0m:		VexRiscv @ 50MHz
+^M^[[1mBUS^[[0m:		wishbone 32-bit data/32-bit addr
+^M^[[1mCSR^[[0m:		32-bit data big ordering
+^M^[[1mROM^[[0m:		128.0KiB
+^M^[[1mSRAM^[[0m:		8.0KiB
+^M^[[1mMAIN RAM^[[0m:	8.0KiB
+^M
+^M--=========== ^[[1mInitialization^[[0m ===========--
+^M
+^MMemtest at 0x40000000 (8.0KiB)...
+^M  Write: 0x40000000-0x40000000 0B   ^M  Write: 0x40000000-0x40002000 8.0KiB   ^M
+^M   Read: 0x40000000-0x40000000 0B   ^M   Read: 0x40000000-0x40002000 8.0KiB   ^M
+^MMemtest OK
+^MMemspeed at 0x40000000 (Sequential, 8.0KiB)...
+^M  Write speed: 77.2MiB/s
+^M   Read speed: 40.1MiB/s
+^M
+^M--================ ^[[1mBoot^[[0m ================--
+^MBooting from serial...
+^MPress Q or ESC to abort boot completely.
+^MsL5DdSMmkekro
+Timeout
+^MNo boot medium found
+^M
+^M--============== ^[[1mConsole^[[0m ===============--
+^M
+^M^[[92;1mlitex^[[0m> ident
+^MIdent: NeTV2 blink SoC (openXC7 minimal) 2026-09-06 08:21:57
+^M^[[92;1mlitex^[[0m> 
+^M^[[92;1mlitex^[[0m> 

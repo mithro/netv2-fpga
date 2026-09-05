@@ -1,0 +1,49 @@
+### DDR3 base SoC openXC7 probe -- yosys cell summary (synthesis SUCCEEDED)
+   Number of cells:              12270
+     $scopeinfo                      3
+     BUFG                            5
+     CARRY4                        290
+     DSP48E1                         4
+     FDCE                            8
+     FDPE                            4
+     FDRE                         4088
+     FDSE                          352
+     IBUF                            2
+     IDELAYCTRL                      1
+     IDELAYE2                       32
+     INV                           345
+     IOBUF                          32
+     IOBUFDS                         4
+     ISERDESE2                      32
+     LUT2                          778
+     LUT3                         1508
+     LUT4                         1338
+     LUT5                         2106
+     LUT6                          905
+     MUXF7                          10
+     MUXF8                           4
+     OBUF                           35
+     OBUFDS                          1
+     OSERDESE2                      65
+     PLLE2_ADV                       1
+     RAM256X1S                     256
+     RAM32M                         36
+     RAMB18E1                       22
+     RAMB36E1                        3
+
+   Estimated number of LCs:       5857
+
+4.53. Executing CHECK pass (checking for obvious problems).
+Checking module kosagi_netv2...
+Found and reported 0 problems.
+
+5. Executing JSON backend.
+
+### nextpnr device utilisation (serdes placed) + placement FAILURE
+28661:Info: 	          SLICE_LUTX:  9076/126800     7%
+28683:Info: 	            IDELAYE2:    32/  300    10%
+28687:Info: 	           OSERDESE2:    65/  300    21%
+28690:Info: 	           ISERDESE2:    32/  300    10%
+28692:Info: 	          IDELAYCTRL:     1/    6    16%
+28717:Info: Placed 330 cells based on constraints.
+28718:ERROR: Unable to place cell 'data_mem_grain0.0.0.genblk1.genblk1[0].genblk1.slice', no Bels remaining of type 'RAM256X1S'

@@ -1,0 +1,26 @@
+
+^M^[[92;1mlitex^[[0m> 
+^M^[[92;1mlitex^[[0m> help
+^M
+^MLiteX BIOS, available commands:
+^M
+^Mleds                     - Set LEDs value
+^Mflush_cpu_dcache         - Flush CPU data cache
+^Mcrc                      - Compute CRC32 of a part of the address space
+^Mident                    - Identifier of the system
+^Mhelp                     - Print this help
+^M
+^Mserialboot               - Boot from Serial (SFL)
+^Mreboot                   - Reboot
+^Mboot                     - Boot from Memory
+^M
+^Mmem_cmp                  - Compare memory content
+^Mmem_speed                - Test memory speed
+^Mmem_test                 - Test memory access
+^Mmem_copy                 - Copy address space
+^Mmem_write                - Write address space
+^Mmem_read                 - Read address space
+^Mmem_list                 - List available memory regions
+^M
+^M^[[92;1mlitex^[[0m> 
+^M^[[92;1mlitex^[[0m> 

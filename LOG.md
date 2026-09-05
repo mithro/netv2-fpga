@@ -3,6 +3,36 @@
 Newest entries first. Dates are ISO 8601. Every entry names the branch, what was
 done, what was measured, and what is still open.
 
+## 2026-09-06 (phase 2b, branch phase2b-openxc7)
+
+- Goal item (c) -- open-source toolchain build. New target `netv2/targets/blink.py`:
+  minimal NeTV2 SoC (VexRiscv + UART + LedChaser, no DDR/video/PCIe, BIOS in
+  128 KiB integrated ROM + 8 KiB integrated main RAM, 50 MHz). Builds end-to-end
+  with **openXC7** (Yosys 0.52 + nextpnr-xilinx 0.8.2 + prjxray, from the
+  fpgas.online repo's installed toolchain; the `regymm/openxc7:latest` docker
+  image at Yosys 0.17 was not used). Bitstream produced (~3.8 MB) via
+  `fasm2frames`/`xc7frames2bit`. Usage on a7-100: LUT 3447/126800 (2%), FF 1793
+  (1%), BRAM 24, DSP 4, 1 PLL; timing PASS at 50 MHz (sys Fmax ~91 MHz). Fixups
+  needed: device-name dash strip, chipdb symlink, `delete t:$scopeinfo`; no
+  INTERNAL_VREF (no DDR).
+- **Ran on real hardware:** volatile JTAG load on `rpi5-netv2` (non-golden,
+  IDCODE 0x13631093) -- LiteX BIOS booted on /dev/ttyAMA0, on-chip memtest OK,
+  `ident` = "NeTV2 blink SoC (openXC7 minimal)". No SPI flash write, no power
+  cycle; `rpi3-netv2` (golden) untouched.
+- **Boundary documented.** DDR3 base SoC forced onto openXC7 via a probe
+  (`docs/testing/reports/2026-09-phase2b-openxc7/ddr_openxc7_probe.py`): yosys
+  synthesises the full DDR PHY (32 ISERDESE2, 65 OSERDESE2, 32 IDELAYE2, 1
+  IDELAYCTRL, 256 RAM256X1S) but nextpnr-xilinx **fails in placement** --
+  `no Bels remaining of type 'RAM256X1S'` (LiteDRAM data memory). Past that lie
+  the known blockers (ISERDESE2-from-pad #143, no async-CDC exceptions, MMCM
+  lock), and litedram memtest has never passed on openXC7/NeTV2. HDMI/video
+  (ISERDESE2-from-pad, MMCME2_ADV) and PCIe (GTP) are likewise outside the
+  openXC7 boundary. Docs: `docs/current/openxc7-build.md` + the report tree.
+- Modern DDR targets (`base.py`, upstream `kosagi_netv2`) hardwire the Vivado
+  toolchain -- they do not thread `--toolchain` into the `Platform`, so
+  `--toolchain openxc7` on them fails with "Unable to find Vivado" (hence the
+  probe's monkeypatch). A future openXC7 DDR attempt would need that wired.
+
 ## 2026-09-05 (phase 1, branch phase1-baseline)
 
 - Phase 0 merged into `modern` (137c709). The merge commit's `Co-Authored-By`
