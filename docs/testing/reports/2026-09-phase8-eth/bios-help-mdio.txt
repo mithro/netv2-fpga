@@ -1,0 +1,139 @@
+##### RAWCAP open /dev/ttyAMA0 @ 115200 #####
+##### draining boot for 2.0s #####
+
+##### CMD: '' #####
+
+[92;1mlitex[0m> 
+[92;1mlitex[0m> 
+##### CMD: 'help' #####
+help
+
+LiteX BIOS, available commands:
+
+leds                     - Set LEDs value
+flush_l2_cache           - Flush L2 cache
+flush_cpu_dcache         - Flush CPU data cache
+crc                      - Compute CRC32 of a part of the address space
+ident                    - Identifier of the system
+help                     - Print this help
+
+netboot                  - Boot via Ethernet (TFTP)
+serialboot               - Boot from Serial (SFL)
+reboot                   - Reboot
+boot                     - Boot from Memory
+
+mem_cmp                  - Compare memory content
+mem_speed                - Test memory speed
+mem_test                 - Test memory access
+mem_copy                 - Copy address space
+mem_write                - Write address space
+mem_read                 - Read address space
+mem_list                 - List available memory regions
+
+sdram_mr_write           - Write SDRAM Mode Register
+sdram_cal                - Calibrate SDRAM
+sdram_test               - Test SDRAM
+sdram_init               - Initialize SDRAM (Init + Calibration)
+sdram_force_wrphase      - Force write phase
+sdram_force_rdphase      - Force read phase
+
+mdio_dump                - Dump MDIO registers
+mdio_read                - Read MDIO register
+mdio_write               - Write MDIO register
+
+[92;1mlitex[0m> 
+[92;1mlitex[0m> 
+##### CMD: 'ident' #####
+ident
+Ident: LiteX SoC on NeTV2 2026-09-06 07:05:40
+[92;1mlitex[0m> 
+[92;1mlitex[0m> 
+##### CMD: 'mdio_dump 0 8' #####
+mdio_dump 0 8
+MDIO dump @0x0:
+0x00 0x3100
+0x01 0x786d
+0x02 0x0022
+0x03 0x1561
+0x04 0x81e1
+0x05 0xc5e1
+0x06 0x000f
+0x07 0x2001
+[92;1mlitex[0m> 
+[92;1mlitex[0m> 
+##### CMD: 'mdio_dump 1 8' #####
+mdio_dump 1 8
+MDIO dump @0x1:
+0x00 0xffff
+0x01 0xffff
+0x02 0xffff
+0x03 0xffff
+0x04 0xffff
+0x05 0xffff
+0x06 0xffff
+0x07 0xffff
+[92;1mlitex[0m> 
+[92;1mlitex[0m> 
+##### CMD: 'mdio_dump 2 8' #####
+mdio_dump 2 8
+MDIO dump @0x2:
+0x00 0xffff
+0x01 0xffff
+0x02 0xffff
+0x03 0xffff
+0x04 0xffff
+0x05 0xffff
+0x06 0xffff
+0x07 0xffff
+[92;1mlitex[0m> 
+[92;1mlitex[0m> 
+##### CMD: 'mdio_dump 3 8' #####
+mdio_dump 3 8
+MDIO dump @0x3:
+0x00 0xffff
+0x01 0xffff
+0x02 0xffff
+0x03 0xffff
+0x04 0xffff
+0x05 0xffff
+0x06 0xffff
+0x07 0xffff
+[92;1mlitex[0m> 
+[92;1mlitex[0m> 
+##### CMD: 'mdio_read 0 1' #####
+mdio_read 0 1
+MDIO read @0x0:
+0x01 0x786d
+[92;1mlitex[0m> 
+[92;1mlitex[0m> 
+##### CMD: 'mdio_read 0 2' #####
+mdio_read 0 2
+MDIO read @0x0:
+0x02 0x0022
+[92;1mlitex[0m> 
+[92;1mlitex[0m> 
+##### CMD: 'mdio_read 0 3' #####
+mdio_read 0 3
+MDIO read @0x0:
+0x03 0x1561
+[92;1mlitex[0m> 
+[92;1mlitex[0m> 
+##### CMD: 'mdio_read 1 1' #####
+mdio_read 1 1
+MDIO read @0x1:
+0x01 0xffff
+[92;1mlitex[0m> 
+[92;1mlitex[0m> 
+##### CMD: 'mdio_read 1 2' #####
+mdio_read 1 2
+MDIO read @0x1:
+0x02 0xffff
+[92;1mlitex[0m> 
+[92;1mlitex[0m> 
+##### CMD: 'mdio_read 1 3' #####
+mdio_read 1 3
+MDIO read @0x1:
+0x03 0xffff
+[92;1mlitex[0m> 
+[92;1mlitex[0m> 
+##### RAWCAP DONE #####

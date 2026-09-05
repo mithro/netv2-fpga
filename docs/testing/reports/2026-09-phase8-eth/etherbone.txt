@@ -1,0 +1,16 @@
+=== Etherbone end-to-end (litex_server on desktop -> wg -> Pi udp_relay -> NeTV2 RMII) ===
+litex_server --udp --udp-ip 10.1.90.210 (Pi relay) -> 10.0.11.2:1234 (NeTV2 Etherbone)
+
+# Direct probe from Pi (source port 1234), reply pr=1:
+probe -> 10.0.11.2:1234 from local port 1234 payload=4e6f11440000000000000000
+REPLY from ('10.0.11.2', 1234): 4e6f12440000000000000000 (12B)
+  flags=0x12 pr=1 pf=0
+ETHERBONE PROBE OK
+
+# CSR read (ctrl_scratch @ 0xf0000004, reset 0x12345678):
+0xf0000004 : 0x12345678
+
+# Write 0xdeadbeef then read back:
+0xf0000004 : 0xdeadbeef
+# Restore + read back:
+0xf0000004 : 0x12345678

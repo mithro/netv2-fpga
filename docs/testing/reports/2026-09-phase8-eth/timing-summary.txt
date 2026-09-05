@@ -1,0 +1,20 @@
+=== Design Timing Summary (post-route, data_width=32 hybrid) ===
+
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.299        0.000                      0                24123        0.043        0.000                      0                24123        0.264        0.000                       0                  9516  
+
+=== Per-clock (Intra Clock Table) ===
+| Intra Clock Table
+Clock                   WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+clk50                    18.667        0.000                      0                    7        0.253        0.000                      0                    7        7.000        0.000                       0                    10  
+  main_crg_clkout0        0.299        0.000                      0                23741        0.043        0.000                      0                23741        3.870        0.000                       0                  9197  
+  main_crg_clkout1                                                                                                                                                    0.908        0.000                       0                   127  
+  main_crg_clkout2                                                                                                                                                    0.908        0.000                       0                     6  
+  main_crg_clkout3        1.379        0.000                      0                   14        0.130        0.000                      0                   14        0.264        0.000                       0                    10  
+  main_crg_clkout5                                                                                                                                                   18.408        0.000                       0                     2  
+eth_rx_clk                1.378        0.000                      0                  300        0.121        0.000                      0                  300        9.500        0.000                       0                   120  
+eth_tx_clk                0.676        0.000                      0                   61        0.144        0.000                      0                   61        9.500        0.000                       0                    42  
+| Inter Clock Table
+
+Verdict: All user specified timing constraints are met.
