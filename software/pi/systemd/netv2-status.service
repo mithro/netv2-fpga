@@ -1,0 +1,38 @@
+# NeTV2 status reporter -- systemd replacement for the 2019 pm2 "netv2-status"
+# app. It reads SoC telemetry off the console UART and publishes JSON on
+# http://127.0.0.1:6502/ for MagicMirror's MMM-json-feed to poll.
+#
+# Install:
+#   sudo cp software/pi/netv2_status.py /opt/netv2/netv2_status.py
+#   sudo cp software/pi/systemd/netv2-status.service /etc/systemd/system/
+#   sudo cp software/pi/systemd/netv2-status.env /etc/netv2/netv2-status.env
+#   sudo systemctl daemon-reload && sudo systemctl enable --now netv2-status
+#
+# Replaces: pm2 resurrect of the "netv2-status" node app (pm2-pi.service).
+
+[Unit]
+Description=NeTV2 SoC status reporter (UART telemetry -> JSON on :6502)
+After=network.target
+# The overlay firmware must be running for real telemetry to appear; the
+# service still starts and serves {} until then.
+
+[Service]
+Type=simple
+# UART/HTTP settings come from the env file; edit it, not this unit.
+EnvironmentFile=-/etc/netv2/netv2-status.env
+ExecStart=/usr/bin/python3 /opt/netv2/netv2_status.py
+Restart=on-failure
+RestartSec=3
+# Serial access needs the dialout group; HTTP binds loopback only.
+User=netv2
+Group=dialout
+# Hardening (loopback HTTP + one serial device is all it needs).
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+DeviceAllow=/dev/ttyS0 rw
+DeviceAllow=/dev/ttyAMA0 rw
+
+[Install]
+WantedBy=multi-user.target

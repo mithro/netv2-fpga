@@ -1,0 +1,4 @@
+# openocd 0.12 scan_chain via software/pi/openocd/netv2-jtag.cfg
+Info : Linux GPIOD JTAG/SWD bitbang driver
+Info : Note: The adapter "linuxgpiod" doesn't support configurable speed
+Info : JTAG tap: xc7.tap tap/device found: 0x13631093 (mfg: 0x049 (Xilinx), part: 0x3631, ver: 0x1)
