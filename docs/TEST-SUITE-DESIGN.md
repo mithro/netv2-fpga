@@ -74,7 +74,14 @@ two paths with the same sink and reports the difference:
 The NeTV2 passthrough latency itself is bounded from above by `L_pt` and its
 sub-line nature is asserted from the gateware (documented, not measured).
 
-## Test inventory (each maps to one automated test)
+## Test inventory (original plan)
+
+This table is the original design sketch. The **authoritative** test list, IDs and
+assertions live in `netv2test/tests.py` (run `python3 -m netv2test.run_all --list`).
+The implementation added T24-T31 from an adversarial coverage review
+(pipe_override, overlay-input signal quality, overlay DMA stop/run, rectoff,
+hpdforce/relax, i2c snoop, firmware video_mode, DDR bandwidth) and renumbered
+some rows; do not rely on the IDs in the table below.
 
 | ID | Area | Test | Pass criterion |
 |---|---|---|---|
@@ -101,7 +108,7 @@ sub-line nature is asserted from the gateware (documented, not measured).
 | T21 | JSON status | `json on` record parses; fields consistent with `status` (hres/vres/clock) | as stated |
 | T22 | thermal | `debug xadc` < 90 C | as stated |
 | T23 | audio passthrough | rpiz-3 plays 1 kHz tone on HDMI audio; `arecord` from capture card: dominant FFT bin at 1 kHz +-20 Hz, SNR > 20 dB; silence -> no tone | as stated |
-| T24 | pipe_override (raw TMDS passthrough) | write `rectangle.pipe_override=1` via `mw`? — **requires CSR address, not exposed by firmware; deferred unless csr.h can be regenerated** | documented gap |
+| T24 | pipe_override (raw TMDS passthrough) | `debug override` toggles `rectangle.pipe_override`; overlay block vanishes, raw source shows | as stated |
 
 Deferred / not testable here (documented, not hidden): HDCP (no HDCP source),
 `video_mode` changes on the NeTV2 itself (changes the EDID offered to the
