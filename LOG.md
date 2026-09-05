@@ -285,3 +285,40 @@ ev FLIP_COMPLETE seq 41420 time 597798.060334 mono 597798.060364
 1920x1080 YUYV @10: 4147200 B/frame, interval 114/139/331 ms
 ```
   Buffer timestamps are CLOCK_MONOTONIC (dequeue time - timestamp = 14-22 ms).
+
+### 18:30 — Root cause of intermittent lock and 0x0 resolution: AVI InfoFrame / CEA VIC
+
+Spent time chasing "input0 locks then reads 0x0" and "capture mostly no-signal".
+Findings, in order:
+
+1. **Capture reconfiguration storms.** Repeatedly changing the V4L2 capture
+   format toggles the capture card's HPD (it only asserts HPD while a stream
+   is open), which the NeTV2 passes through to rpiz-3 and which also triggers
+   the firmware's `trip_hpd` re-link logic. Rapid changes never let the chain
+   settle. Fix: set the capture format once per run; wait for a stable lock
+   after any HPD event (~1-5 s for content, up to ~27 s worst case).
+
+2. **"No signal" frames = Y==7.** The MS2109 emits a flat near-black frame
+   (luma 7) when it has no valid input. `capmax>20` is a reliable "has signal"
+   test. Under a *stable* lock the capture is solid: 120/120 MJPG frames have
+   signal.
+
+3. **Resolution detection needs the AVI InfoFrame.** `status`/`json`/`debug
+   res:` all read `hdmi_in0_resdetection_hres/vres`. With the **pykms agent**
+   driving the source these read **0x0** even though the pixel clock is
+   148.49 MHz, char-sync=111, chansync=1, WER=0 and the picture passes through
+   perfectly. With **fbcon/tvservice** driving the same display they read
+   **1920x1080**. Cause: rpiz-3's HDMI-A-1 exposes two 1920x1080@60 modes --
+   the EDID *preferred* detailed-timing mode (`type 72`, flags `0x5`, **no**
+   picture-aspect / VIC) and the CEA mode (`type 64`, flags `0x100005`, 16:9
+   picture aspect = VIC 16). vc4 only emits a populated **AVI InfoFrame** for
+   the CEA mode, and the NeTV2's resolution detector derives H/V res from the
+   InfoFrame-bearing HDMI signal. The agent had been picking the first (preferred)
+   match. **Fix:** `find_mode` now prefers a mode with the picture-aspect-ratio
+   flag bits set (`flags & 0xF<<19`), and the CEA fallback sets 16:9 too.
+   Verified: with the CEA mode, `status` reads `input0: 1920x1080 (@ 148.49 MHz)`.
+
+Net: goal-1 "NeTV2 locks to 1080p60" holds both as pixel-lock (always) and as
+reported resolution (with the CEA-mode fix). Reliable lock indicators for the
+test suite: pixel clock == 148.49 MHz, char-sync 111, chansync 1, WER 0,
+resdetect 1920x1080, and capture luma max > 20.
