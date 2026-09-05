@@ -25,6 +25,13 @@ respond; not gated.**
 - **Conclusion:** the power/enable-gating risk is retired — remaining work is driver logic
   (key load -> auth -> cipher enable), not silicon bring-up.
 
+### Step 2 (DONE) — key-loader write/DONE handshake
+`hdcp/key_load_test.py`, `hdcp/results/keyload-02.txt`. The loader accepts the
+KEY_ADR/KY0/KY1 + START sequence; KEY_CTL reports DONE coherently (load completes
+in <1 poll for all indices 0..39). KEY_ADR/KY0/KY1 are write-only (read back the
+"hdcp" APB signature), so key STORAGE can only be verified end-to-end via a
+successful authentication (correct keys -> Km match). Interface is live.
+
 ## Next steps
 - Step 2: key-loader write/DONE handshake (load a key index, no encryption) — mechanism check.
 - Step 3: read the downstream HDCP receiver (NeTV2 / capture path) BKSV over DDC 0x74; confirm
