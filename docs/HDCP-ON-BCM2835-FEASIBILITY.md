@@ -278,3 +278,73 @@ int vc_tv_hdmi_set_hdcp_revoked_list_id(uint32_t display_id, const uint8_t *list
     externally-supplied key without an OTP enable is **UNKNOWN/untested**. If it refuses, you'd
     need to patch/replace `start.elf` to ungate it (precedent exists: the H.264/MPEG-2
     codec-licence `start.elf` path), but **no HDCP-enable firmware patch is known publicly.**
+
+## Silicon (corrected) — the HDCP registers ARE in ARM-mapped space
+
+**This supersedes the earlier "engine at unmapped 0x7E809000, VPU-only" reading.** Two
+independent sources give the *same* HDCP register interface, and the vc4 source confirms the
+offsets are free — so the HDCP cipher registers are directly ARM-reachable, inside the 0x600
+window vc4 already maps but never programs.
+
+**Source A — GPL Broadcom STB header** `bchp_hdmi.h` (BCM7340, `jameshilliard/stblinux-2.6.18-7.1`),
+base `0x001a0800`. **Source B — reverse-engineered BCM2835 map** (paulwratt
+`rpi-internal-registers-online/Region_HDMI.html`), core base `0x7e902000`. They match
+offset-for-offset:
+
+| Register | STB (BCM7340) | Pi (BCM2835) | rel. offset |
+|---|---|---|---|
+| BKSV0 / BKSV1 | 0x1a0810 / 14 | 0x7e902010 / 14 | +0x10 / 14 |
+| AN0 / AN1 | 0x1a0818 / 1c | 0x7e902018 / 1c | +0x18 / 1c |
+| KSV_FIFO_0 / _1 | 0x1a0830 / 34 | 0x7e902030 / 34 | +0x30 / 34 |
+| V (KSV-list SHA) | 0x1a0838 | 0x7e902038 | +0x38 |
+| **HDCP_KEY_1** | 0x1a083c | 0x7e90203c | +0x3c |
+| **HDCP_KEY_2** | 0x1a0840 | 0x7e902040 | +0x40 |
+| **HDCP_CTL** | 0x1a0844 | 0x7e902044 | +0x44 |
+| CP_STATUS | 0x1a0848 | 0x7e902048 | +0x48 |
+| CP_INTEGRITY | 0x1a084c | 0x7e90204c | +0x4c |
+| CP_CONFIG | 0x1a0878* | 0x7e902054* | +0x78 / +0x54 |
+| CP_TST | 0x1a087c* | 0x7e902058* | — |
+
+\*The STB has extra `CP_INTEGRITY_CHK_*` registers (0x54–0x74) that the BCM2835 map compresses,
+so CP_CONFIG/CP_TST land lower on the Pi. The **key-load registers (KEY_1/KEY_2/CTL/BKSV/AN/
+KSV_FIFO) are at identical relative offsets** on both parts — same HDMI-TX IP.
+
+**Register-based key-load field definitions (from the GPL STB header — the prize):**
+- `HDCP_KEY_1`: `I_KEY_NUM_5_0` [5:0] = key index 0–39; `I_KEY_23_0` [31:8] = low 24 bits.
+- `HDCP_KEY_2`: `I_KEY_55_24` [31:0] = high 32 bits. (Together: one 56-bit device key per index.)
+- `CP_CONFIG`: `I_ENABLE_RDB_KEY_LOAD` [10] = **load keys via the register interface ("RDB")
+  instead of key RAM/OTP**; `I_KEY_BASE_ADDRESS_9_0` [9:0]; `I_ENABLE_KU_COMPUTATION` [19].
+- `HDCP_CTL`: `I_AUTH_REQUEST` [0] = start auth; `I_FORCE_VCALC` [9]; `I_RESET_KU` [16].
+- `CP_STATUS`: `HDCP_READY` [31]; `O_AN_READY` [0].
+- `KSV_FIFO_0/1`: 40-bit KSV per push (repeater downstream list).
+  Note: **no AKSV register** — the transmitter's own AKSV is derived from the loaded 40-key set.
+
+**vc4 confirms the space is free.** The VC4 core variant defines registers at 0x00 (CORE_REV),
+0x04 (SW_RESET), 0x08 (HOTPLUG_INT), 0x0c (HOTPLUG), then nothing until 0x5c (FIFO_CTL), 0x90+
+(MAI/audio), 0xa0 (RAM_PACKET_CONFIG). It defines **nothing at 0x10–0x58** — the exact HDCP
+range. vc4 `ioremap`s the whole 0x600 core window, so **those HDCP registers are already mapped
+into kernel space and are directly readable/writable from the ARM** (via a vc4 patch, or from
+userspace through `/dev/mem`); vc4 simply never touches them. (The MAI/CSC registers at HD-region
+offsets 0x14–0x58 are a *different* physical block at 0x7e808000 and do not conflict.)
+
+### Reconciling the two hardware pictures
+- `0x7E809000` "hdcp mailbox" (Herman Hermitage) = the **VPU communication mailbox** — how the
+  closed firmware receives the 328-byte key block from `tvservice` (`VC_TV_HDCP_SET_KEY`). It is
+  *not* the cipher engine.
+- The **cipher engine registers** are the low-offset ones in the HDMI core (0x7e902010–58),
+  documented by two independent sources and confirmed unused by vc4.
+- Therefore there are **two possible key-load paths**, not one: (1) the firmware path
+  (`vc_tv_hdmi_set_hdcp_key_id` → VPU → engine), and (2) a **direct ARM-MMIO path** writing
+  `HDCP_KEY_1/2` with `CP_CONFIG.I_ENABLE_RDB_KEY_LOAD` — which does *not* require the VPU to
+  load keys. Path (2) is what makes a vc4 driver extension (or a userspace `/dev/mem` prototype)
+  realistic.
+
+### What is still UNKNOWN (the honest gap)
+- Whether these registers are **live on stock Pi firmware** or gated: the HSM clock is
+  ARM-settable (good), but the block may need a power-domain/OTP "HDCP enable" the VPU controls.
+  The documented `I_ENABLE_RDB_KEY_LOAD` mode suggests register key-load is a real hardware
+  facility (used for bring-up/test), but that it *works without an OTP enable on shipping Pi
+  firmware* is **untested**.
+- The exact **driver sequence** (order of key-load → Ku enable → auth → BKSV read → An → R0/Ri
+  → repeater FIFO → Ri watchdog) is in Broadcom's closed `bhdm_hdcp.c` (Magnum/Nexus). Recovering
+  that sequence (from a leaked SDK or by tracing a binary) is the remaining research item.
