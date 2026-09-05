@@ -10,7 +10,7 @@ import time
 from . import patterns as P
 from .agent_client import SourceAgent
 from .console import Console
-from .frames import ensure_dir, frame_luma, frame_to_image
+from .frames import CaptureError, ensure_dir, frame_luma, frame_to_image
 from .overlay import Overlay
 from .v4l2cap import Capture
 
@@ -80,13 +80,17 @@ class Rig(object):
         return st["mhz"] > 1.0
 
     def wait_for_lock(self, timeout=45.0, w=None, h=None, mhz=None, stable=1.0):
-        """Wait until `status` reports the expected input0 resolution and the
-        capture card delivers non-'no signal' frames.  Returns seconds taken."""
+        """Wait until the NeTV2 `status` reports the expected input0 resolution
+        and pixel clock, held stable for `stable` seconds.  This is the
+        authoritative 'NeTV2 has locked' signal and does not depend on the
+        (intermittent) MS2109 capture card.  Returns seconds taken."""
         t0 = time.monotonic()
         deadline = t0 + timeout
         good_since = None
+        last = {}
         while time.monotonic() < deadline:
-            if self.locked(w, h, mhz) and self.capture_has_signal():
+            last = self.input0()
+            if self.locked(w, h, mhz):
                 if good_since is None:
                     good_since = time.monotonic()
                 elif time.monotonic() - good_since >= stable:
@@ -97,7 +101,7 @@ class Rig(object):
                 good_since = None
             time.sleep(0.25)
         raise LockTimeout("input0 did not lock to %sx%s within %.0fs (last: %r)" % (
-            w or self.src_w, h or self.src_h, timeout, self.input0()))
+            w or self.src_w, h or self.src_h, timeout, last))
 
     def capture_has_signal(self):
         """The MS2109 emits a flat Y=7 frame when it has no input signal."""
@@ -105,8 +109,53 @@ class Rig(object):
             f = self.cap.latest(timeout=2.0)
         except RuntimeError:
             return False
-        y = frame_luma(f)
+        try:
+            y = frame_luma(f)
+        except CaptureError:
+            return False
         return not (y.max() <= 8.0)
+
+    SIGNAL_LUMA = 20.0
+
+    def frame_is_signal(self, frame):
+        try:
+            return float(frame_luma(frame).max()) > self.SIGNAL_LUMA
+        except CaptureError:
+            return False
+
+    def good_frame(self, timeout=20.0, settle=0.0):
+        """Return the next capture frame that carries real signal (the MS2109
+        drops to a flat no-signal frame much of the time).  Raises LockTimeout
+        if none arrives within `timeout`."""
+        t_min = time.monotonic() + settle
+        deadline = time.monotonic() + timeout + settle
+        while time.monotonic() < deadline:
+            try:
+                f = self.cap.latest(min_timestamp=t_min, timeout=min(2.0, max(0.1, deadline - time.monotonic())))
+            except RuntimeError:
+                continue
+            t_min = f.timestamp
+            if self.frame_is_signal(f):
+                return f
+        raise LockTimeout("no signal-bearing frame within %.0fs" % timeout)
+
+    def good_image(self, timeout=20.0, settle=0.0, save_as=None):
+        f = self.good_frame(timeout=timeout, settle=settle)
+        img = frame_to_image(f)
+        if save_as:
+            img.save_ppm(os.path.join(self.evidence_dir, save_as))
+        return img, f
+
+    def measure_duty(self, seconds=6.0):
+        """Fraction of captured frames that carry real signal, plus effective fps."""
+        n = max(1, int(self.cap.fps or 30) * int(seconds))
+        frames = self.cap.record(n, timeout=seconds + 8)
+        if not frames:
+            return {"duty": 0.0, "fps": 0.0, "n": 0, "good": 0}
+        good = sum(1 for f in frames if self.frame_is_signal(f))
+        span = frames[-1].timestamp - frames[0].timestamp
+        fps = (len(frames) - 1) / span if span > 0 else 0.0
+        return {"duty": good / float(len(frames)), "fps": fps, "n": len(frames), "good": good}
 
     # ---- frames -----------------------------------------------------------------
     def fresh_image(self, settle=0.4, save_as=None):

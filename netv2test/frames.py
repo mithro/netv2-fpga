@@ -10,6 +10,10 @@ import subprocess
 import numpy as np
 
 
+class CaptureError(Exception):
+    """A captured frame could not be decoded (truncated/no-signal)."""
+
+
 class Image(object):
     """RGB uint8 image (h, w, 3) plus a luma plane."""
 
@@ -77,9 +81,12 @@ def yuyv_luma(data, w, h):
 def mjpg_to_rgb(data):
     p = subprocess.Popen(["djpeg", "-pnm"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = p.communicate(data)
-    if p.returncode != 0:
-        raise RuntimeError("djpeg failed: %s" % err.decode(errors="replace").strip())
-    return parse_ppm(out)
+    if p.returncode != 0 or not out:
+        raise CaptureError("djpeg failed: %s" % err.decode(errors="replace").strip())
+    try:
+        return parse_ppm(out)
+    except (ValueError, IndexError) as e:
+        raise CaptureError("ppm parse: %s" % e)
 
 
 def parse_ppm(buf):
