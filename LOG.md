@@ -17,3 +17,4 @@ done, what was measured, and what is still open.
   `gh repo create`); reaching the netboot Pi 3B+ nodes (tweed host key changed).
 - Phase 0 started on branch `phase0-repo-setup`.
 - Mirrored LiteX 2026.04's migen pin 4c2ae8d (git.m-labs.hk) to mithro/migen branch netv2-pin.
+- Phase 0 complete on phase0-repo-setup: legacy/ move, uv project (LiteX 2026.04), subtree tests/hdmi-suite (which also brought in concurrent ten64 work: an hdcp/ directory about HDCP output from rpiz-3), REPL contract (28 commands), host table + golden guard, Pi 5 notes. Task 1 to 8 spec checks were done by the controller by direct inspection; the four-direction review runs on the whole branch before merge.
