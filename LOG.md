@@ -199,3 +199,42 @@ Over 25 s of debug output: 378/389 samples `res:1920x1080 chansync:1 WER 0 0 0`
 (the first 10 were the initial phase search; one transient `1920x368`).
 Board DNA: `0058a44663258854`. FPGA die temp rose to ~79 C with both inputs
 and the output active.
+
+### 16:40 — **End-to-end chain verified: capture card receives NeTV2 output (goals 2 & 3)**
+
+Captured one raw YUYV 1920x1080 frame from the capture card after skipping
+400 frames (`v4l2-ctl --stream-mmap --stream-count=1 --stream-skip=400 --stream-to=frame1.yuyv`,
+YUYV at 1080p is only ~5 fps over USB 2.0, so this took ~80 s). Converted
+with `scripts/yuyv2png.py` -> `evidence/2026-09-05-first-capture-console-plus-overlay.png`.
+
+The frame shows:
+- **input0 (rpiz-3)**: the Pi Zero's Linux text console at native 1920x1080
+  ("Raspbian GNU/Linux 13 rpiz-3 tty1", "My IP address is 10.1.90.234 ...").
+- **overlay (input1, rpi3-netv2's own HDMI)**: MagicMirror UI composited on
+  top (clock "02:23", "NETV2 STATUS / Error fetching stats." because I stopped
+  `netv2-status`, compliments text, NYT headline). Bright pixels only, as per
+  the gateware rule (`rect_on & r,g,b >= rect_thresh(20)` selects overlay).
+
+NeTV2 `status` at capture time: `input0: 1920x1080 (@ 148.49 MHz)`,
+`input1: 1920x1080 (@ 148.49 MHz)`, ddr all 8054 Mbps, xadc 81 C.
+
+Why it is the console and not the kmstest SMPTE bars: `kmstest` was started
+with stdin from /dev/null, so it hit "press enter to exit" and quit at once.
+The CRTC mode survived; once HPD+EDID arrived, fbcon re-applied the EDID's
+preferred mode natively. I.e. **no forcing is needed on rpiz-3**: as soon as
+the capture card streams, its EDID reaches the Pi Zero through the NeTV2 and
+the kernel picks 1080p60 by itself.
+
+EDID seen by rpiz-3 (`/sys/class/drm/card0-HDMI-A-1/edid`, 256 bytes, saved as
+`evidence/capture-card-edid-as-seen-by-rpiz-3.bin`), decoded with pyedid:
+manufacturer PNP id `HJW`, product 2337, week 15 / 2024, name **"HD TO USB"**,
+EDID 1.3, resolutions incl. 1920x1080@60 (preferred), 1280x720@60.
+rpiz-3 `kmsprint`: `HDMI-A-1 (connected)`, Crtc `1920x1080@60.00 148.500`.
+
+A 1-hour MJPG stream (`--stream-count=216000`) is now running on rpi3-netv2
+(`~/cap/stream.log`) to keep HPD asserted while I build the test suite.
+
+**Summary of the original three asks (all verified with device output above):**
+1. rpiz-3 outputs 1080p60 — yes (kmsprint 1920x1080@60.00 148.500 MHz).
+2. NeTV2 locks to it — yes (`input0: 1920x1080 (@ 148.49 MHz)`, WER 0, chansync 1).
+3. USB capture card receives NeTV2 output — yes (frame captured, content matches).
