@@ -3,6 +3,22 @@
 Newest entries first. Dates are ISO 8601. Every entry names the branch, what was
 done, what was measured, and what is still open.
 
+## 2026-09-05 (phase 1, branch phase1-baseline)
+
+- Phase 0 merged into `modern` (137c709). The merge commit's `Co-Authored-By`
+  trailer has a typo in the domain; it stays, since force-pushing is not allowed.
+- **Defect found and fixed (a1af75e):** five `legacy/deps/*` gitlinks (litedram,
+  liteeth, litescope, litevideo, pyserial) recorded the commits of an earlier
+  xobs `quickstart` working-tree checkout instead of AlphamaxMedia master's pins.
+  Cause: `git commit -qam` in commit df02245 (a spec edit) staged the dirty
+  submodule pointers; the later `legacy/` move then carried them as R100 renames,
+  which is why the review's rename check did not flag them. `legacy/deps` now
+  matches `alphamax/master` exactly. Lesson recorded: never `git commit -a` in a
+  checkout with modified submodules. `modern` carries the wrong pins between
+  df02245 and the phase 1 merge; nothing was built from them.
+- Phase 1 tasks 10, 11, 12 (docs), 13 (baseline run) and 15 (2019 rebuild) run in
+  parallel without committing; the controller commits. Task 14 follows 13.
+
 ## 2026-09-05
 
 - Cloned all 23 AlphamaxMedia repositories; forked or branch-archived them under
