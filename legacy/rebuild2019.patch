@@ -1,0 +1,37 @@
+2026 tooling, not part of the 2019 design.
+
+The one source change needed to compile the 2019 LiteX BIOS with a 2022-era
+RISC-V toolchain (Debian 12's gcc-riscv64-unknown-elf 12.2.0 / binutils 2.40).
+It is NEVER applied to the tree: the rebuild container bind-mounts a patched
+copy of common.mak over the submodule's file, read-only. See
+docs/original/rebuild-2019.md section "Fixes applied".
+
+1. binutils >= 2.36 split the CSR instructions into the Zicsr extension and
+   fence.i into Zifencei, so `csrw mtvec,a0` in
+   litex/soc/software/libbase/crt0-vexriscv.S:59 no longer assembles under the
+   `-march=rv32im` that litex/soc/cores/cpu/vexriscv/core.py:13 emits. A later
+   -march on the command line wins, so appending the explicit extensions is
+   enough; it changes no generated code, only what the assembler will accept.
+
+2. LiteX passes LDFLAGS straight to `riscv64-unknown-elf-ld`, but
+   `-nodefaultlibs` is a gcc driver option, not an ld option. Older ld accepted
+   it via unique-prefix abbreviation; binutils 2.40 finds several `--no*`
+   matches and fails with "unable to disambiguate: -nodefaultlibs". `-nostdlib`
+   on the same line already gives ld the intended behaviour, so the redundant
+   flag is dropped.
+
+--- a/legacy/deps/litex/litex/soc/software/common.mak
++++ b/legacy/deps/litex/litex/soc/software/common.mak
+@@ -42,10 +42,10 @@
+ # Toolchain options
+ #
+ INCLUDES = -I$(SOC_DIRECTORY)/software/include/base -I$(SOC_DIRECTORY)/software/include -I$(SOC_DIRECTORY)/common -I$(BUILDINC_DIRECTORY)
+-COMMONFLAGS = $(DEPFLAGS) -Os $(CPUFLAGS) -g3 -fomit-frame-pointer -Wall -fno-builtin -nostdinc $(INCLUDES)
++COMMONFLAGS = $(DEPFLAGS) -Os $(CPUFLAGS) -march=rv32im_zicsr_zifencei -g3 -fomit-frame-pointer -Wall -fno-builtin -nostdinc $(INCLUDES)
+ CFLAGS = $(COMMONFLAGS) -fexceptions -Wstrict-prototypes -Wold-style-definition -Wmissing-prototypes
+ CXXFLAGS = $(COMMONFLAGS) -std=c++11 -I$(SOC_DIRECTORY)/software/include/basec++ -fexceptions -fno-rtti -ffreestanding
+-LDFLAGS = -nostdlib -nodefaultlibs -L$(BUILDINC_DIRECTORY)
++LDFLAGS = -nostdlib -L$(BUILDINC_DIRECTORY)
+
+ define compilexx
+ $(CX) -c $(CXXFLAGS) $(1) $< -o $@

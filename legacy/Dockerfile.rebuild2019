@@ -1,0 +1,29 @@
+FROM python:3.7-slim
+# libncurses5 is in addition to the plan's list: Vivado 2025.2's Tcl layer loads
+# libxv_commontasks.so, which still links libncurses.so.5.
+RUN apt-get update && apt-get install -y --no-install-recommends make git libtinfo5 libncurses5 libx11-6 libxrender1 libxtst6 libxi6 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends gcc-riscv64-unknown-elf && rm -rf /var/lib/apt/lists/*
+# Further system libraries Vivado 2025.2 dlopen()s in batch mode. The plan's
+# list was written for an older Vivado; these were found by running the flow and
+# reading each "cannot open shared object file" in turn.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libpixman-1-0 libpng16-16 libedit2 libelf1 libunwind8 libusb-1.0-0 \
+      libgomp1 libfreetype6 libfontconfig1 libglib2.0-0 libbz2-1.0 zlib1g libxml2 \
+ && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir pyserial==3.4 colorama
+# Vivado 2025.2's bin/rdiArgs.sh unconditionally exports LC_ALL=en_US.UTF-8 and
+# aborts ("locale::facet::_S_create_c_locale name not valid") if that locale is
+# absent, which it is in python:3.7-slim. Generate it in the image.
+RUN apt-get update && apt-get install -y --no-install-recommends locales && rm -rf /var/lib/apt/lists/* \
+ && localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
+# litex c692e62 hard-codes toolchain_path="/opt/Xilinx/Vivado" and then looks for
+# <path>/<version>/settings64.sh (litex/build/xilinx/vivado.py:216-217,
+# litex/build/xilinx/common.py:35-60). The 2025.2 install uses the modern layout
+# /opt/Xilinx/2025.2/Vivado/settings64.sh instead. The host tree is bind-mounted
+# read-only at /xilinx and both layouts are symlinked onto it here, because a
+# read-only bind mount of /opt/Xilinx cannot itself be given a child mount.
+RUN mkdir -p /opt/Xilinx/Vivado \
+ && ln -s /xilinx/2025.2 /opt/Xilinx/2025.2 \
+ && ln -s /xilinx/2025.2/Vivado /opt/Xilinx/Vivado/2025.2
+WORKDIR /work
+ENV PATH=/opt/Xilinx/2025.2/Vivado/bin:$PATH
