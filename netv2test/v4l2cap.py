@@ -102,6 +102,7 @@ class Capture(object):
         self._record_want = 0
         self.frames_total = 0
         self.frames_dropped = 0     # sequence gaps reported by the driver
+        self.frames_short = 0       # incomplete raw frames discarded
         self._last_seq = None
 
     # ---- format ---------------------------------------------------------
@@ -209,6 +210,10 @@ class Capture(object):
             if f is None:
                 continue
             if f.bytesused == 0:
+                continue
+            if self.pixfmt != "MJPG" and f.bytesused != self.sizeimage:
+                # USB isochronous drop -> short raw frame; discard it.
+                self.frames_short += 1
                 continue
             self.frames_total += 1
             if self._last_seq is not None and f.sequence > self._last_seq + 1:

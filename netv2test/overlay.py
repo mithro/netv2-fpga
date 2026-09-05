@@ -30,7 +30,9 @@ def wire_level(v):
 
 
 def _run(cmd, check=True):
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    env = dict(os.environ)
+    env["PATH"] = "/home/pi/n/bin:" + env.get("PATH", "")   # pm2 needs `node`
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
     out, _ = p.communicate()
     if check and p.returncode != 0:
         raise RuntimeError("%s failed (%d): %s" % (" ".join(cmd), p.returncode, out.decode(errors="replace")))
