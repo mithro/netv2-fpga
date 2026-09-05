@@ -446,16 +446,14 @@ def t18_video_matrix(rig, ctx):
 @test("T19", "mode")
 def t19_mode_change_720p(rig, ctx):
     try:
-        rig.source_mode(1280, 720, 60)
-        dt = rig.wait_for_lock(w=1280, h=720, mhz=MHZ_720P, timeout=45)
+        dt = rig.ensure_locked("geometry", w=1280, h=720, mhz=MHZ_720P)
         st = rig.input0()
         ctx.metric("720p_lock_time_s", round(dt, 2))
         ctx.metric("input0_720p", st)
         ctx.check(st["hres"] == 1280 and st["vres"] == 720, "input0 relocks at 1280x720")
         ctx.close_to(st["mhz"], 74.25, 0.3, "720p pixel clock ~74.25 MHz")
     finally:
-        rig.source_mode(1920, 1080, 60)
-        rig.wait_for_lock(mhz=MHZ_1080P, timeout=45)
+        rig.ensure_locked("geometry", w=1920, h=1080, mhz=MHZ_1080P)
     ctx.check(rig.input0()["hres"] == 1920, "input0 returns to 1920x1080 after switch back")
 
 
@@ -476,8 +474,7 @@ def t20_source_loss_recovery(rig, ctx):
     ctx.metric("loss_detect_s", round(time.monotonic() - t0, 2))
     ctx.check(lost, "NeTV2 reports source loss after DPMS off")
     rig.agent.dpms(on=True)
-    rig.source_pattern("geometry")
-    dt = rig.wait_for_lock(mhz=MHZ_1080P, timeout=45)
+    dt = rig.ensure_locked("geometry", mhz=MHZ_1080P)
     ctx.metric("recovery_s", round(dt, 2))
     ctx.check(rig.input0()["hres"] == 1920, "NeTV2 re-locks after source returns")
 
