@@ -4,4 +4,6 @@
   JTAG loads only, never flash, never power-cycle), `rpi5-netv2` (100T, PCIe,
   UART, no capture). Details in `tests/hardware/hosts.py`.
 - Suite: `tests/hdmi-suite/` (runs on the Pi attached to the board).
-- Reports: `reports/<YYYY-MM>-<name>/` with `report.md`, `report.json`, evidence.
+- Reports: `docs/testing/reports/<YYYY-MM>-<name>/` with `report.md`, `report.json`,
+  evidence. The imported suite's own historical output lives at
+  `tests/hdmi-suite/reports/`.

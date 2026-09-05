@@ -3,6 +3,8 @@
 Written from the AlphamaxMedia sources at `legacy/` (netv2-fpga master 4f4dd0d)
 and the stock unit `rpi3-netv2`. Each page cites the file and line it describes.
 
+Pages are written in phase 1; a link below is a dead link until then.
+
 - [hardware.md](hardware.md): board, FPGA variants, Pi connections, jumpers
 - [gateware.md](gateware.md): `VideoOverlaySoC`, video pipeline, compositing, HDCP
 - [clocking.md](clocking.md): CRG, HDMI input clocking, DRP, timing exceptions

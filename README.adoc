@@ -1,4 +1,22 @@
-# NeTV2 LiteX Quickstart Guide
+= NeTV2 (modernisation in progress)
+
+This repository is being rebuilt onto LiteX 2026.04 on the `modern` branch.
+Nothing is deleted: the original 2019 tree is kept, unmodified, under `legacy/`.
+
+* `legacy/`: the original tree (see `legacy/README.md`; its README follows below)
+* `netv2/`, `tests/`, `scripts/`: the new `uv` project (`pyproject.toml` at the root)
+* `docs/original/`: how NeTV2 worked in 2018 to 2019
+* `docs/current/`: how it works now, updated as phases land
+* `docs/testing/`: test rigs, procedures and reports
+* `docs/superpowers/specs/`, `docs/superpowers/plans/`: design spec and phase plans
+* `LOG.md`: dated work log, newest first
+
+Quickstart for the modern tree: `uv sync --extra dev`, then `make test` and `make lint`.
+The reference unit `rpi3-netv2` is never flashed, rebooted or re-imaged (`tests/hardware/hosts.py`).
+
+== Original 2019 README (kept verbatim; paths now live under legacy/)
+
+=== NeTV2 LiteX Quickstart Guide
 
 Please check out the wiki (https://github.com/AlphamaxMedia/netv2-fpga/wiki) for more documentation on the NeTV2 project.
 
