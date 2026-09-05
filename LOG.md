@@ -44,3 +44,46 @@ Open questions to resolve next:
    vs a 2026-03 test bitstream)?
 2. How does the NeTV2 firmware report HDMI input lock (serial console on
    `/dev/serial0` via the LiteX BIOS/firmware CLI)?
+
+### 15:50 — First contact with the NeTV2 firmware console
+
+`scripts/netv2_serial.py` copied to `pi@rpi3-netv2:~/netv2_serial.py`. The
+console is `/dev/ttyS0` (mini-UART, `/dev/serial0`), 115200 8N1. `/dev/ttyAMA0`
+is held by `hciattach` (bluetooth). The FPGA is running the **production NeTV2
+"RUNTIME>" firmware** (has `status`, `video_matrix`, `video_mode`, `hdp_toggle`,
+`debug edid`, `json on`), not one of the 2026-03 test bitstreams.
+
+`status` output (verbatim):
+
+```
+input0:  0x0 (@   0. 0 MHz)
+input1:  1920x0 (@   0. 0 MHz)
+xadc: 71487 mC
+ddr: read:    0Mbps  write:    0Mbps  all:    0Mbps
+```
+
+JSON status (`json on` is being enabled by something every few seconds):
+
+```
+{"hdmi_Rx_hres" : 0, "hdmi_Rx_vres" : 0, "hdmi_Rx_pixel_clock" : 0, ... "overlay_hres" : 1920, "overlay_vres" : 0, "overlay_symbol_sync" : 111, ... "fpga_die_temp" : "71C" }
+```
+
+Findings:
+- **input0 (HDMI Rx from rpiz-3) = 0x0**: no signal detected yet. Expected —
+  rpiz-3 HDMI output state not yet checked/configured.
+- input1 (overlay, from rpi3-netv2's own HDMI) reports 1920x0 with symbol sync
+  on all 3 channels. Odd vres=0; to investigate.
+- FPGA die temp 71 C.
+- Output is interleaved/corrupted: a second process is reading `/dev/ttyS0`
+  and repeatedly writing `json on` (looks like the MagicMirror `netv2-status`
+  module). Must be stopped for reliable console use.
+
+### New goal from Tim (received 15:50)
+
+> Demonstrate the netv2 board connected to the rpi3-netv2 device's HDMI in and
+> out functionality. Then create a test suite which is able to verify that all
+> the hdmi functionality is working correctly, including accurately measuring
+> frame latency, overlay functionality, etc. Only complete when an adversarial
+> sub-agent is unable to find any functionality that has not had an automated
+> test verify correct function. The complete test suite must run end-to-end on
+> the device without intervention.
