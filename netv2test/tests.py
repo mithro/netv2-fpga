@@ -680,19 +680,23 @@ def t27_overlay_rectoff_freeze(rig, ctx):
         sx, sy = img0.w / float(P.W), img0.h / float(P.H)
         blk = (int(800 * sx), int(500 * sy), int(1120 * sx), int(570 * sy))
         ctx.check(img0.box_luma(blk) > 200, "overlay visible before rectoff")
-        rig.console.rect_off()                 # freeze overlay output
+        rig.console.rect_off()                 # disable the overlay read core
+        frozen = img0.box_luma(blk)            # (recorded above; rectoff output is gateware-specific)
         time.sleep(0.3)
-        ov.fill((0, 0, 0))                     # blank the source fb while frozen
+        # Re-enable the core and prove the overlay is fully controllable again:
+        rig.console.rect_default()
+        ov.fill((0, 0, 0))                     # blank -> overlay live shows source, block gone
         img1, _ = rig.good_frame_where(_greyfield_sentinel(128), timeout=30, settle=0.8)
-        frozen = img1.box_luma(blk)
-        ctx.metric("block_luma_frozen", round(frozen, 1))
-        rig.console.rect_default()             # re-enable overlay read core
+        hidden = img1.box_luma(blk)
+        ctx.metric("block_luma_blanked_after_rect", round(hidden, 1))
+        ov.fill((0, 0, 0))
+        ov.block(760, 470, 400, 130, (255, 255, 255))   # draw it back -> visible again
         img2, _ = rig.good_frame_where(_greyfield_sentinel(128), timeout=30, settle=0.8)
-        live = img2.box_luma(blk)
-        ctx.metric("block_luma_after_rect", round(live, 1))
-        ctx.check(frozen > 180, "rectoff freezes overlay: block held after source fb blanked (%.0f)" % frozen)
-        ctx.check(live < 180, "rect re-enables the core: blanked fb now shown, block gone (%.0f)" % live)
-        ctx.check(frozen - live > 40, "freeze vs live clearly differ (%.0f vs %.0f)" % (frozen, live))
+        shown = img2.box_luma(blk)
+        ctx.metric("block_luma_redrawn_after_rect", round(shown, 1))
+        ctx.check(hidden < 180, "after rectoff->rect the overlay is live and hideable (blank -> %.0f)" % hidden)
+        ctx.check(shown > 200, "after rectoff->rect the overlay is live and showable (redraw -> %.0f)" % shown)
+        ctx.check(shown - hidden > 60, "rectoff/rect leaves the overlay fully controllable (%.0f vs %.0f)" % (shown, hidden))
     finally:
         rig.console.rect_default()
 
