@@ -1,0 +1,59 @@
+# HDCP output on the BCM2835 (RPi Zero) — implementation work
+
+Goal: produce HDCP-encrypted HDMI output from `rpiz-3` (BCM2835) that the NeTV2 can decode,
+delivered as local Linux kernel patches. Background/feasibility analysis is in
+`../docs/HDCP-ON-BCM2835-FEASIBILITY.md`.
+
+Register map (Broadcom generated headers, cross-checked vs GPL STB header + RE map):
+- **Key-RAM loader @ VC 0x7e809000 (ARM-phys 0x20809000):** KEY_CTL[START0/DONE1/DISHDCP2],
+  KEY_ADR(8b index), KEY_KY0(32b), KEY_KY1(24b) => one 56-bit device key per index.
+- **Cipher/auth engine @ VC 0x7e902000 (ARM-phys 0x20902000):** BKSV0/1@10/14, AN0/1@18/1c,
+  KSV_FIFO@30/34, HDCP_KEY_1/2@3c/40, HDCP_CTL@44 (AUTH_REQ0/FORCE_VCALC9/RESET_KU16),
+  CP_STATUS@48 (O_AN_READY0/HDCP_READY31), CP_INTEGRITY@4c, CP_CONFIG@54
+  (KEY_BASE_ADDR[9:0]/ENABLE_RDB_KEY_LOAD10/ENABLE_KU_COMPUTATION19), CP_TST@58.
+
+## Progress
+
+### Step 1 (DONE) — read-only /dev/mem probe: are the blocks gated?
+`hdcp/mmap_probe.py`, run as root on rpiz-3. Result (`hdcp/results/probe-01.txt`): **both blocks
+respond; not gated.**
+- Key-loader `KEY_CTL=0x00000002` (DONE set = idle/ready); KEY_ADR/KY0/KY1 read the "hdcp" APB
+  signature (write-only regs).
+- HDMI core `CORE_REV=0x600`; **`CP_STATUS=0x80000000` => HDCP_READY(bit31) asserted**;
+  `CP_CONFIG=0x00130080`; `CP_INTEGRITY=0x1414ec00`. `/dev/mem` reaches the vc4-claimed core.
+- Precondition confirmed earlier: OTP HDCP key rows blank; HSM clock live @163MHz.
+- **Conclusion:** the power/enable-gating risk is retired — remaining work is driver logic
+  (key load -> auth -> cipher enable), not silicon bring-up.
+
+### Step 2 (DONE) — key-loader write/DONE handshake
+`hdcp/key_load_test.py`, `hdcp/results/keyload-02.txt`. The loader accepts the
+KEY_ADR/KY0/KY1 + START sequence; KEY_CTL reports DONE coherently (load completes
+in <1 poll for all indices 0..39). KEY_ADR/KY0/KY1 are write-only (read back the
+"hdcp" APB signature), so key STORAGE can only be verified end-to-end via a
+successful authentication (correct keys -> Km match). Interface is live.
+
+### Step 3 (DONE) — topology + decode architecture mapped
+NeTV2 gateware has a full HDCP decryptor (`overlay/hdcp_*.v`) driven by CSRs (see
+`hdcp/REGISTERS.md`). Decode needs: incoming HDCP-encrypted video (Pi produces it),
+An (snooped or 0), Km (loaded via CSR), Km_valid=1, and a cipher-init trigger
+(Aksv_manual in manual mode). Because we own both ends, arbitrary consistent keys +
+An=0 suffice -- no master key, no real HDCP display. Full register field map +
+controlled encrypt->decrypt plan recorded in hdcp/REGISTERS.md.
+
+### Step 4 (IN PROGRESS) — Pi encryption not yet engaging
+Register interface fully works: key loader accepts writes, BKSV validates
+(O_BKSV_VALID), auth status forces to AUTHENTICATED_OK via I_SET_RDB_AUTHENTICATED,
+AUTH_REQUEST generates An. BUT captured video stays clean and CP_INTEGRITY (Ri) is
+static >5s -> the cipher is not running and no encryption-status signaling (EESS,
+ctl_code=1001 at vsync) is emitted. The NeTV2 decoder (hdcp_mod.v) syncs on that
+EESS marker, so the Pi must put its SCHEDULER/ENCODER into HDCP-encrypt mode (run
+cipher + insert EESS), not merely set the authenticated status bit. Resolving the
+exact Broadcom scheduler/encoder encryption-enable sequence (bhdm_hdcp.c) is the
+current blocker. Pi reverted to clean baseline between experiments.
+
+## Next steps
+- Step 2: key-loader write/DONE handshake (load a key index, no encryption) — mechanism check.
+- Step 3: read the downstream HDCP receiver (NeTV2 / capture path) BKSV over DDC 0x74; confirm
+  what sink we authenticate against.
+- Step 4: minimal authentication attempt; then cipher enable; then verify NeTV2 decode.
+- Step 5: port the working sequence into a vc4 kernel patch set (local only).

@@ -1,0 +1,26 @@
+== HDCP key-loader (0x7e809000)  ARM-phys=0x20809000 ==
+  KEY_CTL          @+0x00 = 0x00000002
+  KEY_ADR          @+0x04 = 0x68646370
+  KEY_KY0          @+0x08 = 0x68646370
+  KEY_KY1          @+0x0c = 0x68646370
+  -> varied values: block IS responding
+== HDMI core (0x7e902000)  ARM-phys=0x20902000 ==
+  CORE_REV         @+0x00 = 0x00000600
+  SW_RESET         @+0x04 = 0x00000000
+  HOTPLUG_INT      @+0x08 = 0x00000006
+  HOTPLUG          @+0x0c = 0x00000000
+  BKSV0            @+0x10 = 0x00000000
+  BKSV1            @+0x14 = 0x00000000
+  AN0              @+0x18 = 0x00000000
+  AN1              @+0x1c = 0x00000000
+  KSV_FIFO_0       @+0x30 = 0x00000000
+  KSV_FIFO_1       @+0x34 = 0x00000000
+  HDCP_KEY_1       @+0x3c = 0x00000000
+  HDCP_KEY_2       @+0x40 = 0x00000000
+  HDCP_CTL         @+0x44 = 0x00000000
+  CP_STATUS        @+0x48 = 0x80000000
+  CP_INTEGRITY     @+0x4c = 0x1414ec00
+  CP_INTEGRITY_CFG @+0x50 = 0x00001000
+  CP_CONFIG        @+0x54 = 0x00130080
+  CP_TST           @+0x58 = 0x00000000
+  -> varied values: block IS responding
