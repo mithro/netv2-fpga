@@ -16,3 +16,4 @@ done, what was measured, and what is still open.
 - Blocked on the user: creating `mithro/netv2-testsuite` (classifier denied
   `gh repo create`); reaching the netboot Pi 3B+ nodes (tweed host key changed).
 - Phase 0 started on branch `phase0-repo-setup`.
+- Mirrored LiteX 2026.04's migen pin 4c2ae8d (git.m-labs.hk) to mithro/migen branch netv2-pin.
