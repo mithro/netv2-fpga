@@ -1,25 +1,25 @@
 [submodule "deps/litex"]
-	path = deps/litex
+	path = legacy/deps/litex
 	url = https://github.com/alphamaxmedia/litex.git
 	branch = master
 [submodule "deps/migen"]
-	path = deps/migen
+	path = legacy/deps/migen
 	url = https://github.com/alphamaxmedia/migen.git
 	branch = improve-gearbox-timing
 [submodule "deps/litedram"]
-	path = deps/litedram
+	path = legacy/deps/litedram
 	url = https://github.com/alphamaxmedia/litedram.git
 [submodule "deps/litevideo"]
-	path = deps/litevideo
+	path = legacy/deps/litevideo
 	url = https://github.com/alphamaxmedia/litevideo.git
 	branch = terc4-data
 [submodule "deps/liteeth"]
-	path = deps/liteeth
+	path = legacy/deps/liteeth
 	url = https://github.com/enjoy-digital/liteeth.git
 [submodule "deps/litescope"]
-	path = deps/litescope
+	path = legacy/deps/litescope
 	url = https://github.com/alphamaxmedia/litescope.git
 	branch = add-trigger-depth
 [submodule "deps/pyserial"]
-	path = deps/pyserial
+	path = legacy/deps/pyserial
 	url = https://github.com/pyserial/pyserial.git
