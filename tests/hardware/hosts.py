@@ -27,9 +27,15 @@ the stock bitstream that ends every run), firmware serial boot, console traffic
 that passes :func:`check_repl_command_allowed`, restarts of the user-session
 services the suite itself pauses (``pm2 mm``, ``lightdm``), and runs of the
 imported test suite. ``run_suite`` is the widest grant in the set: the suite
-pauses and restores those services and writes volatile CSRs over the console.
-Never SPI flash writes or erases, never a reboot, never JTAG SRST, never a
-power cycle, re-imaging, USB reset, or a write to the reference rootfs.
+pauses and restores those services, writes volatile CSRs over the console, and
+writes its own report tree under its suite directory, which is the only rootfs
+write the golden unit receives. Callers that pause services must restore them
+in a ``finally`` block. Never SPI flash writes or erases, never a reboot, never
+JTAG SRST, never a power cycle, re-imaging, USB reset, or any other write to
+the reference rootfs. What makes ``console_command`` non-persistent is the
+``mw``/``mc`` denial: the 2019 REPL has no flash command of its own, and the
+only route from the console to the SPI NOR is a raw write into the SPI-flash
+core's CSRs.
 
 Console commands on the golden unit
 -----------------------------------
@@ -200,9 +206,14 @@ def check_repl_command_allowed(host_spec: str, command_line: str) -> None:
     host = resolve_host(host_spec)
     if not host.golden:
         return
-    if "\r" in command_line or "\n" in command_line:
+    # readstr() in the 2019 firmware dispatches on every CR/LF and edits the
+    # buffer on backspace (0x08/0x7f), so any control character can turn a
+    # harmless-looking line into a forbidden one. Real command lines are
+    # printable ASCII only (the tokeniser splits on ' ').
+    if any(c < " " or c > "~" for c in command_line):
         raise GoldenUnitError(
-            f"multi-line REPL input is forbidden on golden unit {host.name}: {command_line!r}"
+            f"control or non-ASCII characters are forbidden in REPL input on golden unit "
+            f"{host.name}: {command_line!r}"
         )
     tokens = command_line.split()
     if tokens and tokens[0].casefold() in GOLDEN_FORBIDDEN_REPL_COMMANDS:

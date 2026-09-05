@@ -142,6 +142,13 @@ def test_multi_line_repl_input_refused_on_golden():
             check_repl_command_allowed("rpi3-netv2", line)
 
 
+def test_backspace_and_other_control_characters_refused_on_golden():
+    """readstr() applies 0x08/0x7f before dispatch: 'mr\\x08w ...' becomes 'mw ...'."""
+    for line in ("mr\x08w 0 0 1", "x\x7freboot", "status\x00", "st\x1batus", "statué"):
+        with pytest.raises(GoldenUnitError):
+            check_repl_command_allowed("rpi3-netv2", line)
+
+
 def test_repl_check_is_case_insensitive_and_ignores_leading_space():
     for line in ("REBOOT", "Reboot", "MW 0 0", "  reboot", "\treboot"):
         with pytest.raises(GoldenUnitError):

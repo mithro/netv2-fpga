@@ -883,7 +883,7 @@ git commit -m "test(baseline): stock NeTV2 suite run on rpi3-netv2 (golden unit)
 **Files:**
 - Create: `scripts/parse_edid.py`, `tests/unit/test_parse_edid.py`, `docs/testing/reports/2026-09-baseline/t4d.txt`, `docs/testing/reports/2026-09-baseline/edid-analysis.md`
 
-Physical re-cabling of `rpiz-3` directly into the MS2109 needs hands on site; the spec's "direct measurement" is therefore replaced by three remote measurements, and `LOG.md` says so. Actions used on the golden unit: `console_command` (`json off`, `status`, `debug t4i`, `debug t4d`; none is in the REPL deny-list), `service_restart` (`pm2 stop/start mm`), and one `rootfs_write` (copying `baseline_t4d.py` to `~`) that the guard refuses; it is done anyway as a deliberate, logged, immediately reverted exception, because the golden unit has no other way to run a script, and the file is deleted in the same step. The guard in `tests/hardware/hosts.py` is advisory in phase 1: these steps are manual ssh commands; they are listed here so the reviewer can check them against `ALLOWED_ON_GOLDEN`.
+Physical re-cabling of `rpiz-3` directly into the MS2109 needs hands on site; the spec's "direct measurement" is therefore replaced by three remote measurements, and `LOG.md` says so. Actions used on the golden unit: `console_command` (`json off`, `status`, `debug t4i`, `debug t4d`; none is in the REPL deny-list), `service_restart` (`pm2 stop/start mm`). No `rootfs_write`: the script is piped to the interpreter over ssh stdin, so no file is created on the golden unit. The guard in `tests/hardware/hosts.py` is advisory in phase 1: these steps are manual ssh commands; they are listed here so the reviewer can check them against `ALLOWED_ON_GOLDEN`.
 
 - [ ] **Step 1: Write the failing test for the EDID parser**
 
@@ -990,7 +990,7 @@ Expected: 3 passed; then a printout that says whether the MS2109's EDID (as seen
 
 - [ ] **Step 5: Read the TERC4 counters and the rpiz-3 audio state**
 
-Over the golden unit's console, using the suite's own console client. The MagicMirror status script (`netv2-status.js`, run by pm2) holds `/dev/ttyS0` open and polls `json`, so two readers would split the bytes; pause pm2's `mm` process around the read exactly as the suite does (`tests/hdmi-suite/netv2test/overlay.py` `prepare()`/`restore()`), and resume it afterwards even on error. Put the following in `scripts/baseline_t4d.py` and copy it to the Pi (the golden unit has only Python 3.5, so this file is 3.5 syntax):
+Over the golden unit's console, using the suite's own console client. The MagicMirror status script (`netv2-status.js`, run by pm2) holds `/dev/ttyS0` open and polls `json`, so two readers would split the bytes; pause pm2's `mm` process around the read exactly as the suite does (`tests/hdmi-suite/netv2test/overlay.py` `prepare()`/`restore()`), and resume it afterwards even on error. Put the following in `scripts/baseline_t4d.py` and pipe it to the Pi's interpreter over ssh stdin, so nothing is written to the golden rootfs (the golden unit has only Python 3.5, so this file is 3.5 syntax; `python3 -` reads the program from stdin and `sys.path[0]` is the cwd, so `netv2test` resolves from `~`):
 
 ```python
 """Read status and TERC4 counters from the stock firmware (phase 1 baseline)."""
@@ -1011,10 +1011,9 @@ finally:
 ```
 
 ```bash
-scp scripts/baseline_t4d.py pi@rpi3-netv2.iot.welland.mithis.com:~/baseline_t4d.py
-ssh pi@rpi3-netv2.iot.welland.mithis.com 'cd ~ && exec "$(command -v python3)" baseline_t4d.py' | tee docs/testing/reports/2026-09-baseline/t4d.txt
+ssh pi@rpi3-netv2.iot.welland.mithis.com 'cd ~ && exec "$(command -v python3)" -' < scripts/baseline_t4d.py | tee docs/testing/reports/2026-09-baseline/t4d.txt
 ```
-Check the `t4d` output is complete (two lines of counters plus five BCH lines) before recording it; record in `t4d.txt` and `LOG.md` that `debug t4i` changed the running firmware's TERC4 interrupt enable (volatile RAM state, cleared at the unit's next reset). Then remove the copied script from the golden unit (`ssh pi@rpi3-netv2.iot.welland.mithis.com rm ~/baseline_t4d.py`) so the reference rootfs gains nothing. Note that the interrupt enable set by `debug t4i` persists for the life of the current FPGA configuration because the golden unit is never reset; clearing it, if ever needed, is a volatile JTAG reload of the stock `user-35.bit` (an allowed action), never the REPL's `reboot`.
+Check the `t4d` output is complete (two lines of counters plus five BCH lines) before recording it; record in `t4d.txt` and `LOG.md` that `debug t4i` changed the running firmware's TERC4 interrupt enable (volatile RAM state, cleared at the unit's next reset). Note that the interrupt enable set by `debug t4i` persists for the life of the current FPGA configuration because the golden unit is never reset; clearing it, if ever needed, is a volatile JTAG reload of the stock `user-35.bit` (an allowed action), never the REPL's `reboot`.
 (`Console(port, baud)` and `command(cmd, timeout=3.0)` are the real API in `tests/hdmi-suite/netv2test/console.py`; `t4i`/`t4d` are sub-commands of `debug`, `legacy/firmware/ci.c` lines 991, 1141, 1154; the bare words print nothing.) Expected: `status` shows `input0: 1920x1080`; `debug t4d` prints `hdmi0 terc4 packet cnt: N, char cnt: M` (these are input1's counters, `ci.c:1155`) and five BCH words (input0's last capture). Record N, M and whether the BCH words are nonzero (nonzero means input0 has seen at least one data island).
 
 Then on the source: `ssh rpiz-3.iot.welland.mithis.com 'cat /proc/asound/cards; ls /proc/asound/card*/eld* 2>&1; for f in /proc/asound/card*/eld*; do echo "== $f"; cat $f; done'` (if the host key is unknown to this desktop, run it from `rpi3-netv2` instead, which already trusts `rpiz-3`). Append the output to `t4d.txt` under a heading. `eld_valid 1` with `monitor_present 1` and `sad_count 0` or `eld_valid 0` means the source believes the sink has no audio.
