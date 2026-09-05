@@ -1,0 +1,10 @@
+# software/pi/netv2_update.py running on rpi5-netv2 (trixie, Python 3.13.5)
+$ cd ~/netv2-phase4 && python3 netv2_update.py idcode
+IDCODE 0x13631093 -> XC7A100T
+
+# volatile load of the phase-2 base bitstream (netv2-base.bit,
+# sha256 cf8b231daeceb4ceb04a200475d2b5cd7bf68a04daa00100a4f5a51032bde013)
+$ python3 netv2_update.py load netv2-base.bit
+VOLATILE load OK on XC7A100T: netv2-base.bit
+(configuration is in SRAM; a power cycle restores flash)
+# load took ~36 s over linuxgpiod (23:21:12 -> 23:21:48 UTC)

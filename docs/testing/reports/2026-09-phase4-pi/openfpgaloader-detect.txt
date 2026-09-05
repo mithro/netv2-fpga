@@ -1,0 +1,10 @@
+# openFPGALoader v1.1.0 libgpiod equivalent of the netv2-jtag.cfg pin map,
+# read-only detect on rpi5-netv2 (trixie). Pins are TDI:TDO:TCK:TMS = 27:22:4:17.
+$ sudo openFPGALoader --cable libgpiod --pins 27:22:4:17 --detect
+empty
+index 0:
+	idcode 0x3631093
+	manufacturer xilinx
+	family artix a7 100t
+	model  xc7a100
+	irlength 6
