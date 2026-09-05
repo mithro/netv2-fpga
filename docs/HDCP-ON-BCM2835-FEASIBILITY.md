@@ -114,3 +114,65 @@ So items **b, d, e are routine** (a few hundred lines, copying i915's shape). It
 are the whole problem**: they need the BCM HDMI HDCP transmitter register interface (key RAM,
 cipher control, Ri status) — undocumented in any open Pi source. That is precisely the gap the
 comparable-Broadcom-SoC source archaeology (STB/mobile BSPs) aims to close.
+
+## Key material — what a source needs, and what test keys exist
+
+Primary sources read directly: **HDCP 1.4 specification (Rev 1.4, 8 July 2009, Digital Content
+Protection LLC)** and **Crosby, Goldberg, Johnson, Song, Wagner, "A Cryptanalysis of the
+High-bandwidth Digital Content Protection System," ACM-CCS8 DRM Workshop 2001.**
+
+### What an HDCP 1.4 transmitter holds
+A **Device Key Set** = a **40-bit KSV** (Key Selection Vector) + **40 secret 56-bit Device
+Private Keys** (spec §1.2, §2.1). Authentication (§2.2.1): TX sends `Aksv` + a 64-bit random
+`An`; RX returns `Bksv`; each side computes the shared secret `Km` by **summing the 40-of-its-own
+keys selected by the *other* side's KSV bits** (mod 2^56); the block cipher then derives
+`Ks, M0, R0`; the link is authentic iff `R0 == R0'` (read back within 100 ms). The KSV **must
+have exactly 20 ones and 20 zeros** — the receiver rejects any other (§2.2.1); this balance is
+what makes the linear summation scheme work. Link integrity `Ri` is re-checked every ~2 s /
+128th frame (§2.2.3).
+
+### Three sources of key material, and whether a real sink accepts them
+1. **Spec Appendix A facsimile keys (p.58+).** The spec prints four test devices (Transmitter
+   A1/A2, Receiver B1/B2) each with a KSV + 40 keys, plus full cipher test vectors (e.g. the
+   worked `Km = 5309c7d22fcecc`). Purpose: let an implementer **self-test the cipher/summation
+   logic** without holding real secret keys. **Caveat (decisive):** these KSVs are
+   *non-production* — chosen only so the four facsimile devices interoperate *with each other*.
+   A source loaded with facsimile TX keys computes a `Km` that does **not** match a real
+   production sink's `Km'` → `R0 != R0'` → **authentication fails against real hardware.** Good
+   for validating your cipher; useless for making a real NeTV2 lock.
+2. **Master-key-derived keys.** In September 2010 the genuine HDCP **master key** (a 40×40
+   matrix of 56-bit values — the authority's keygen secret) was published; **Intel confirmed it
+   authentic** (spokesman Tom Waldrop, via Engadget: *"It does appear to be a master key… You
+   can derive keys for devices from this published material that do work"*). From it, anyone can
+   run the authority's keygen to mint a **valid `(KSV, 40 keys)` for any balanced KSV**, and
+   because the scheme is deterministic/linear those keys are indistinguishable from factory
+   keys — **a compliant sink computes a matching `Km'` and *will* authenticate.** This exact
+   outcome was predicted by Crosby et al. (2001): *"after recovering the private keys of 40
+   devices… an attacker can… forge new device keys as though he were the trusted center…
+   bypass any revocation list."* (HDCP is essentially Blom's scheme, broken by a conspiracy
+   attack.) **This document does not reproduce the master-key values or provide keygen code**;
+   its existence and implications are cited as public record.
+3. **Real licensed keys** (from DCP LLC under the Adopter Agreement, fused in OTP): what a
+   commercial product ships. Not available to this project and not the point.
+
+For the researcher's goal — making a **real NeTV2 sink** authenticate a Pi source — only option
+2 yields keys a real sink accepts. Option 1 only proves the cipher math.
+
+### Revocation / SRM
+The **SRM** (System Renewability Message) is a DCP-DSA-signed list of revoked **sink** KSVs that
+a transmitter checks before outputting (spec §5; DRM's `drm_hdcp_check_ksvs_revoked()` parses
+`display_hdcp_srm.bin`). It is unforgeable but targets the **sink** direction — the source's own
+KSV is generally not what's checked when driving a sink. For a two-device bench you control, a
+**freshly generated balanced KSV** (not a known-published value, and specifically **not** the
+published Appendix A facsimile KSVs, which are the obvious blacklist candidates) is essentially
+never pre-listed. Felten's summary: the leak *"renders the key revocation feature impotent"*
+because testers can mint unlimited fresh unrevoked KSVs.
+
+### Legal framing (factual, not legal advice)
+DMCA §1201 targets *circumventing access controls to reach protected copyrighted works* (e.g.
+stripping HDCP off a commercial stream). *Producing* HDCP as a compliant **source** to exercise
+the HDCP-**input** path of hardware you own, driving only your own test patterns with no
+protected commercial content, is a different activity — generating protection, not defeating it.
+Intel signalled it would invoke the DMCA against uses of the leaked key (Techdirt, 2010-09-20),
+and the HDCP Adopter Agreement / robustness rules and any key-material licensing are separate
+considerations. For real legal exposure, consult qualified counsel.
