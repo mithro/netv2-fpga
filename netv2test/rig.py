@@ -51,8 +51,16 @@ class Rig(object):
             return
         self.cap.set_format(w, h, pixfmt, fps)
         self.cap.start()
-        # Re-negotiating the stream drops HPD briefly; the NeTV2 re-locks.
-        self.wait_for_lock()
+        # Starting the stream asserts the capture card's HPD toward the NeTV2
+        # output, which passes through to the source.  Re-apply the source mode
+        # now that HPD is up so vc4 emits a fresh AVI InfoFrame (the NeTV2
+        # resolution detector depends on it).  Callers set their pattern and
+        # call wait_for_lock() afterwards.
+        time.sleep(1.0)
+        try:
+            self.agent.mode(self.src_w, self.src_h)
+        except Exception:  # noqa: BLE001
+            pass
 
     def capture_hires(self):
         self.set_capture(1920, 1080, "YUYV", 10)

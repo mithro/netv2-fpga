@@ -82,8 +82,9 @@ def main():
     rig = Rig(evdir)
     # Bring the chain up on a known pattern + capture format.
     fmt = {"mjpg": ("capture_mjpg",), "yuyv480": ("capture_fast",), "yuyv1080": ("capture_hires",)}[args.capture]
+    getattr(rig, fmt[0])()          # start capture (asserts HPD, re-applies source mode)
     rig.source_pattern("geometry")
-    getattr(rig, fmt[0])()
+    rig.wait_for_lock(timeout=60)
     duty = rig.measure_duty(6.0)
     print("capture health: duty %.0f%% @ %.0f fps (%d/%d good)" % (
         duty["duty"] * 100, duty["fps"], duty["good"], duty["n"]))
