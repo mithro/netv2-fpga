@@ -60,8 +60,8 @@ costs the most.
 | 25 | Limits | Builds only on the desktop. Never push to AlphamaxMedia or any upstream. Never open upstream issues/PRs. |
 | 26 | "rpi3b" | 3B+ accepted. |
 | 27 | Test runner Python | The `netv2test` runner stays on the golden unit (Raspbian 9, Python 3.5.3) because it needs `/dev/video0`, `/dev/fb0` and `/dev/ttyS0` there. Therefore `netv2ctl`'s serial-REPL and Etherbone transports are Python 3.5-compatible (no f-strings, no dataclasses, stdlib only) and the suite may depend on them. The PCIe transport is a separate optional module for Python 3.11+ on the Pi 5. |
-| 28 | Output verification without capture | The overlay SoC gains `frame_crc`: CRC32 (IEEE 802.3 polynomial, init 0xFFFFFFFF, final XOR) over the 24-bit RGB value (R, G, B byte order) of every DE-active pixel of output0 in raster order, one CRC latched per frame at VSYNC together with a frame counter, in CSRs. The CRC is computed on the decoded RGB that drives the mux (input0's decoded pixels delayed to match the raw path, or the overlay pixels), never on TMDS characters. **Validation (phase 3b)**: the host writes a known pattern into the overlay framebuffer in DDR over the console or Etherbone, sets the rectangle to cover the whole frame, and compares `frame_crc` with a CRC computed on the host over the same pattern; plus stability while static and change when the pattern changes. The MS2109 capture only corroborates the picture. Phase 6b repeats exactly this with the framebuffer written over PCIe. |
-| 29 | DDR PHY and system clock (new) | The original ran `sys` at **75 MHz** with a 300 MHz IDELAY clock, a bunnie-modified A7DDRPHY, BUFIO/BUFR-derived clocks from two MMCMs and a `dqs_phase` tuning knob; litex-boards' target runs the upstream PHY at 100 MHz with a 200 MHz IDELAY clock. Phase 2a builds **both** on Vivado and characterises them (memtest, litedram calibration margins, HDMI overlay tearing) before phase 3 picks one; the default is upstream 100 MHz because it lifts DDR bandwidth by a third (section 4.6), falling back to the faithful 75 MHz port if calibration is marginal. |
+| 28 | Output verification without capture | The overlay SoC gains `frame_crc`: CRC32 (IEEE 802.3 polynomial, init 0xFFFFFFFF, final XOR) over the 24-bit RGB value (R, G, B byte order) of every DE-active pixel of output0 in raster order, one CRC latched per frame at VSYNC together with a frame counter, in CSRs. The CRC is computed on the decoded RGB that drives the mux (input0's decoded pixels delayed to match the raw path, or the overlay pixels), never on TMDS characters. **Validation (phase 3b)**: with the input1 DMA writer stopped (`debug stop`, as suite T26 already does), a firmware `fill <seed>` command writes a deterministic tiled pattern into the overlay framebuffer in DDR (streaming an 8 MB frame over the 115200-baud console would take about 12 minutes and the rpi3 rig has no Ethernet), the rectangle is set to cover the whole frame, and `frame_crc` is compared with a CRC computed on the host over the same generated pattern; plus stability while static and change when the seed changes. The MS2109 capture only corroborates the picture. Phase 6b repeats exactly this with the framebuffer written over PCIe. |
+| 29 | DDR PHY and system clock (new) | The original ran `sys` at **75 MHz** with a 300 MHz IDELAY clock, a bunnie-modified A7DDRPHY, BUFIO/BUFR-derived clocks from two MMCMs and a `dqs_phase` tuning knob; litex-boards' target runs the upstream PHY at 100 MHz with a 200 MHz IDELAY clock. Phase 2a builds **both** on Vivado and characterises them by memtest and litedram calibration margins (read-leveling and bitslip windows); the default is upstream 100 MHz because it lifts DDR bandwidth by a third (section 4.6), falling back to the faithful 75 MHz port if calibration is marginal. The choice stays provisional until phase 3b's DDR tuning, where overlay tearing under load can first be observed. |
 | 30 | PCIe target parameters (new) | `pcie_x1`, `data_width=64`, `address_width=64` (Pi 5 has RAM above 4 GB), LitePCIe default IDs so the endpoint enumerates as **10ee:7021** (7020 + lanes); the stock 2018 design's kernel module expected 10ee:7022. After JTAG programming the Pi 5 root port is retrained by unbind/rebind of `1000110000.pcie` or a reboot; with the bitstream in NOR the endpoint is up before Linux scans. |
 | 31 | HDCP and audio (new) | Data-island payloads are encrypted under HDCP, so extract and inject operate only when input0 is unencrypted; the firmware refuses to enable them while the HDCP cipher is active and the docs say so. |
 | 32 | Simulation strategy (new) | Core logic (TMDS/TERC4 encode and decode tables, BCH ECC, packet framing, chroma-key mux, rectangle, DMA ring, `frame_crc`) is unit-tested in migen simulation with behavioural stand-ins for Xilinx primitives (ISERDES/OSERDES/MMCM/IDELAY modelled as Python). Serdes-level checks use Vivado `xsim` with `unisims` via cocotb, run only on the desktop. |
@@ -212,8 +212,11 @@ New cores:
   (decision 14).
 - Output clock mux (delivered in phase 3c as part of `overlay.py`, consumed by
   6b and 7c): today the output and the DRAM read port live in `pix_o` from
-  input0. A free-running output clock (litevideo `S7HDMIOutClocking` from the
-  system clock, implemented on a PLLE2 so the MMCM count is unchanged) and a
+  input0. A free-running output clock generator producing `pix` (148.5 MHz) and
+  `pix5x` (742.5 MHz) from one CMT primitive: an MMCME2 with fractional
+  multiply from the 50 MHz oscillator (M=14.875, D=1, VCO 743.75 MHz, O=1 and
+  O=5, giving +0.17 %, inside the HDMI ±0.5 % tolerance; no integer PLLE2 ratio
+  from 50, 75 or 100 MHz yields both clocks within tolerance), and a
   glitch-free clock select with reset sequencing for the LiteDRAM read port let
   the NeTV2 output with no source connected.
 
@@ -223,9 +226,11 @@ Per HDMI input: `pix`, `pix1p25x`, `pix1p25x_r` (BUFR/4), `pix5x` (BUFIO),
 `pix_raw`; input0 additionally `pix_o`/`pix5x_o` from a PLLE2_ADV. Original
 total: 4 MMCME2_ADV + 2 PLLE2 + IDELAYCTRL (300 MHz) + BUFIO/BUFR per bank. Each
 CMT holds one MMCM and one PLL; the XC7A35T has 5 CMTs (5 MMCM + 5 PLL), the
-XC7A100T has 6. The self-timed output clock (phase 3c) uses a third PLLE2, so
-the 35T overlay target needs 4 MMCM + 3 PLL; `pcie_7x` adds an MMCM on the 100T
-only (5 MMCM + 3 PLL of 6 + 6). `crg.py` carries an explicit table of CMT sites
+XC7A100T has 6. The self-timed output clock (phase 3c) needs a fractional MMCM
+(section 4.3), so the worst case (faithful 75 MHz CRG) is 5 MMCM + 2 PLL on the
+35T (5 of 5 MMCMs) and, with `pcie_7x`, 6 MMCM on the 100T (6 of 6). If phase
+2a selects the upstream 100 MHz PHY its single S7PLL CRG frees two MMCMs. The
+chosen ratios and their ppm error are recorded in `crg.py`'s table once 2a decides. `crg.py` carries an explicit table of CMT sites
 per target and part, and the build fails early if it is exceeded. BUFIO/BUFR are bank-local, so
 pad-to-clock-region placement is fixed by the pinout and recorded in the docs.
 
@@ -291,11 +296,11 @@ fixed or explicitly waived in the PR description.
 | Phase | Deliverable | Hardware proof / exit criterion |
 |-------|-------------|----------------|
 | 0 Repo setup | forks, `modern`, layout, uv project with pins, migen mirror, `LOG.md`, subtree of test suite, docs skeleton, REPL contract draft | none |
-| 1 Baseline | `docs/original/*`; baseline suite report from `rpi3-netv2` on stock bitstream; `t4i` then `t4d` island counts (on both inputs, given the label bug) and direct `rpiz-3` to MS2109 audio measurement (feeds 7a); time-boxed (1 day) rebuild of the 2019 design in a `python:3.7` container with Vivado 2025.2 | rpi3 report |
+| 1 Baseline | `docs/original/*`; baseline suite report from `rpi3-netv2` on stock bitstream; `t4i` then `t4d` (which yields input1's packet/character counts under an "hdmi0" label and input0's last BCH capture words, so input0 evidence is presence/absence only) and direct `rpiz-3` to MS2109 audio measurement (feeds 7a); time-boxed (1 day) rebuild of the 2019 design in a `python:3.7` container with Vivado 2025.2 | rpi3 report |
 | 2a Modern base, Vivado | `targets/base.py` for a7-35 and a7-100 in both DDR configurations (decision 29); firmware skeleton; serial boot path; utilisation baseline | BIOS + `Memtest OK` on rpi5 (100T) and rpi3 (35T, volatile), both PHY options characterised |
 | 2b openXC7 base | `targets/base.py` on openXC7 0.9.3+ for both parts; per-primitive status table (ISERDES from pad, IBUFDS_DIFF_OUT, OSERDES 10:1, MMCME2_ADV lock, DRP, BUFIO/BUFR, IDELAYCTRL) from tiny probe designs | `Memtest OK` three times on each part, or a documented root cause for each failure. Runs in parallel with 3a; does not gate it |
-| 3a HDMI passthrough | `gateware/video/` input0 + raw output ported; input1 clocking and decoding (lock only, no DMA); firmware `status`/`debug input0` ported; no DDR use | rpi3 suite T01–T09 pass; utilisation and timing gate for 35T |
-| 3b Overlay | input1 capture, DMA, rectangle, chroma, `frame_crc`, DDR tuning | rpi3 suite T10–T18, T21, T22, T24–T29, T31 pass with baseline SKIPs (T23, T29, T90); `frame_crc` validated per decision 28 |
+| 3a HDMI passthrough | `gateware/video/` input0 + raw output ported; input1 clocking and decoding (lock only, no DMA); REPL contract subset needed by T01–T09 (help, dna, status, debug input0, hpd, edid) ported; no DDR use | rpi3 suite T01–T09 pass; utilisation and timing gate for 35T |
+| 3b Overlay | input1 capture, DMA, rectangle, chroma, `frame_crc`, DDR tuning | rpi3 suite T10–T18, T21, T22, T24–T28, T31 pass; T23, T29 and T90 skip as in the baseline; `frame_crc` validated per decision 28 |
 | 3c Multires, HDCP option, self-timed output | DRP tables, 720p/1080i, HDCP compile-time option, free-running output clock and DRAM-port clock mux (section 4.3) | rpi3 suite T19, T20, T30 pass; HDCP build fits and passes T01–T22; with input0 unplugged the output runs 1080p60 from the internal clock and the MS2109 locks to it |
 | 4 Pi software | scripts, systemd, MagicMirror, updater on trixie | rpi5: systemd units up, MagicMirror serving the overlay, JSON feed live, and, if the Pi 5's HDMI is cabled to input1 (decision 35), console reports input1 locked; Pi 3 trixie via netboot node when available |
 | 5 openXC7 overlay feasibility | `targets/overlay.py` build attempt on openXC7 for both parts; STA numbers; gap list per primitive and per timing exception; minimal restructuring proposal (registered gearbox, fixed-ratio MMCM per resolution) and, if it routes and locks, a hardware run | Report committed; if a bitstream locks on input0, rpi3 T01–T09 attempted and recorded either way |
@@ -305,7 +310,7 @@ fixed or explicitly waived in the PR description.
 | 7b Audio extract | extract core + DMA ring + firmware `audio` + `netv2ctl` | rpi3 rig: 1 kHz tone from `rpiz-3` recovered from the DDR ring, frequency within 1 %; fits the 35T |
 | 7c Audio inject, self-timed | inject core on the phase 3c self-timed output; AVI/GCP/Audio InfoFrame | rpi3 rig: MS2109 ALSA capture of the injected tone, frequency within 1 %, no underruns over 10 min |
 | 7d Audio inject into passthrough (optional) | source audio stripped and replaced | rpi3 rig: T23-style capture hears the injected tone while video passes through |
-| 8 Ethernet control | ethmac integration, UDP JSON port, `netv2ctl` Etherbone transport, suite variants | On whichever unit has the NeTV2 RJ45 cabled (rpi5 first): `litex_server` reads CSRs; on rpi3 the console-only subset (T01, T04–T06, T18–T22, T25, T28, T31) runs with the Etherbone transport instead of the UART, capture tests unchanged |
+| 8 Ethernet control | ethmac integration; firmware UDP command port that executes REPL commands and returns their text verbatim (so `netv2ctl`'s network transport is "REPL over UDP" and the suite's parsers are unchanged); UDP JSON status; Etherbone for raw CSR access via `litex_server`; suite transport switch | On whichever unit has the NeTV2 RJ45 cabled (rpi5 first): `litex_server` reads CSRs and the REPL-over-UDP port answers `status`. On rpi3, **conditional on the user cabling its RJ45**, the console-only subset (T01, T04–T06, T18–T22, T25, T28, T31) runs over UDP instead of the UART, capture tests unchanged |
 | 9 Ancillary | exclave/jig-20 build on current Rust; utilities on Python 3.13 with tests; `netv2-soc` archived | none |
 | 9b Integration per part | combined 35T and 100T targets with the feature matrix; utilisation, CMT and DDR budgets checked | full suite on rpi3 (35T) and full harness on rpi5 (100T) from the combined bitstreams |
 | 10 Docs and final proof | `docs/current`, `docs/testing`, reports on both hosts, summary | both hosts |
@@ -344,7 +349,7 @@ as builds are slow.
 - **Audio inject into a passthrough stream** is the hardest new core (a blanking
   rewriter with packet stripping and repacking). Mitigation: it is phase 7d and
   optional; 7a to 7c deliver diagnosis, extract, and self-timed inject first,
-  and 7b's parser plus captured islands give 7d a real testbench.
+  and 7a's parser plus captured islands give 7d a real testbench.
 - **Golden unit damage**: only volatile loads; the updater and harness refuse
   SPI flash commands when the IDCODE is 0x0362d093 on host `rpi3-netv2`.
 - **Netboot node access**: unresolved; Pi 3 trixie proof may slip until the
