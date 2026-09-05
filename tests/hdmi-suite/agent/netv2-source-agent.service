@@ -1,0 +1,15 @@
+[Unit]
+Description=NeTV2 test-source agent (KMS pattern generator on HDMI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/netv2-agent/netv2_source_agent.py
+Restart=always
+RestartSec=2
+User=root
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
