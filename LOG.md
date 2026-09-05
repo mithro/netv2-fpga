@@ -238,3 +238,27 @@ A 1-hour MJPG stream (`--stream-count=216000`) is now running on rpi3-netv2
 1. rpiz-3 outputs 1080p60 — yes (kmsprint 1920x1080@60.00 148.500 MHz).
 2. NeTV2 locks to it — yes (`input0: 1920x1080 (@ 148.49 MHz)`, WER 0, chansync 1).
 3. USB capture card receives NeTV2 output — yes (frame captured, content matches).
+
+### 17:00 — Test-suite infrastructure decisions
+
+- Design written: `docs/TEST-SUITE-DESIGN.md` (T01-T24).
+- Adding an SSH key from rpi3-netv2 to rpiz-3 was blocked by the Claude Code
+  permission classifier (credential distribution). Decision: **no cross-host
+  SSH**. The source side runs a persistent TCP agent (systemd service on
+  rpiz-3, port 5910, newline-JSON); the runner on rpi3-netv2 just connects.
+- Installed on rpiz-3 via apt (etckeeper auto-committed): `python3-kms++`
+  (pykms), `python3-numpy` (2.2.4).
+- pykms works as root on rpiz-3: `Card()` -> vc4, atomic; `HDMI-A-1` lists
+  `1920x1080@60.00 148.500 ... P|D` while the capture stream is running;
+  `DumbFramebuffer(card,1920,1080,"XR24")`, `crtc.set_mode`, `crtc.page_flip`
+  + `card.read_events()` give FLIP_COMPLETE events every 16.67 ms with
+  `ev.time` == CLOCK_MONOTONIC (matches `time.monotonic()` to < 0.2 ms):
+
+```
+ev FLIP_COMPLETE seq 41419 time 597798.043661 mono 597798.043674
+ev FLIP_COMPLETE seq 41420 time 597798.060334 mono 597798.060364
+```
+- rpi3-netv2 has `djpeg` (libjpeg-turbo) and `libturbojpeg0`, so MJPG frames
+  can be decoded without Python deps; YUYV raw is available at 720x480@60fps
+  and 1920x1080@5-10fps. ALSA capture device `card 1: U0x345f0x2109` present
+  (HDMI audio from the capture card).
