@@ -348,3 +348,121 @@ offsets 0x14–0x58 are a *different* physical block at 0x7e808000 and do not co
 - The exact **driver sequence** (order of key-load → Ku enable → auth → BKSV read → An → R0/Ri
   → repeater FIFO → Ri watchdog) is in Broadcom's closed `bhdm_hdcp.c` (Magnum/Nexus). Recovering
   that sequence (from a leaked SDK or by tracing a binary) is the remaining research item.
+
+## DEFINITIVE register map — from Broadcom's own generated headers (rpi-open-firmware)
+
+`rpi-open-firmware` (christinaa/librerpi) ships Broadcom's auto-generated register-database
+headers under `broadcom/bcm2708_chip/`. These are the authoritative Broadcom names/offsets and
+they **agree exactly** with the GPL STB header (`bchp_hdmi.h`) and the RE'd BCM2835 map
+(paulwratt) — three independent sources, byte-for-byte. This settles the silicon question.
+
+### Two cooperating blocks (both ARM-addressable MMIO)
+
+**(1) HDCP key-RAM loader — `hdcp.h`, base `0x7E809000`** (this is the block Herman Hermitage
+mislabeled "hdcp mailbox"; it is a *register* key loader, not a VPU mailbox):
+```
+HDCP_KEY_CTL  0x7e809000  bits: START[0], DONE[1], DISHDCP[2]
+HDCP_KEY_ADR  0x7e809004  8-bit  key index/address
+HDCP_KEY_KY0  0x7e809008  32-bit key data low
+HDCP_KEY_KY1  0x7e80900c  24-bit key data high   -> KY0|KY1 = one 56-bit device key
+```
+Load procedure implied by the fields: for each key n: `KEY_ADR=n; KY0=lo32; KY1=hi24;
+KEY_CTL.START=1; wait KEY_CTL.DONE`. `DISHDCP` disables. **Plaintext 56-bit keys — no OTP, no
+AES blob, no VPU mailbox.** Note: this block is **not** in the vc4 device-tree `reg` list, so
+Linux never maps it — but it is ordinary MMIO reachable via a new `ioremap`/`/dev/mem`.
+
+**(2) HDCP cipher/authentication engine — `hdmicore.h`, base `0x7E902000`** (inside the 0x600
+window vc4 *does* map but never touches):
+```
+HDMI_BKSV0/1        0x7e902010/14   receiver KSV (20/40 ones)
+HDMI_AN0/1          0x7e902018/1c   session An (64-bit)
+HDMI_AN_INFLUENCE_1/2 0x20/24 ;  HDMI_TST_AN0/1 0x28/2c
+HDMI_KSV_FIFO_0/1   0x7e902030/34   repeater downstream KSV list
+HDMI_HDCP_KEY_1/2   0x7e90203c/40   (alt key path: I_KEY_NUM_5_0 + I_KEY_23_0 / I_KEY_55_24)
+HDMI_HDCP_CTL       0x7e902044      I_AUTH_REQUEST[0], I_FORCE_VCALC[9], I_RESET_KU[16]
+HDMI_CP_STATUS      0x7e902048      O_AN_READY[0], HDCP_READY[31]
+HDMI_CP_INTEGRITY(_CFG) 0x4c/50     Ri link-integrity
+HDMI_CP_CONFIG      0x7e902054      I_KEY_BASE_ADDRESS_9_0[9:0], I_ENABLE_RDB_KEY_LOAD[10], I_ENABLE_KU_COMPUTATION[19]
+HDMI_CP_TST         0x7e902058
+```
+`CP_CONFIG.I_KEY_BASE_ADDRESS` points into the key RAM loaded by block (1); `I_ENABLE_KU_
+COMPUTATION` derives the session key from the loaded set; `HDCP_CTL.I_AUTH_REQUEST` runs
+authentication; `CP_STATUS` reports An-ready / HDCP-ready; `CP_INTEGRITY` is the Ri watchdog.
+
+### On-device confirmation (rpiz-3, measured)
+- OTP `OTP_HDCP_AES_KEY_ROW` region (rows 37/41/45 and neighbours) read **all `00000000`** via
+  `vcgencmd otp_dump` — **no HDCP key material is fused**. This is exactly why the *firmware*
+  path (`VC_TV_HDCP_SET_KEY`, which expects an OTP-AES-decryptable encrypted key blob) reports
+  "no key". It does **not** block the plaintext register loader (block 1).
+- `vcgencmd measure_clock hdmi` = **163.68 MHz HSM clock live**, `display_power=1` — the clock
+  the HDCP engine needs is already running; the block is not clock-starved.
+
+### rpi-open-firmware itself
+It contains the Broadcom register *headers* (the map above) but does **not** initialize HDMI or
+HDCP (README: video bring-up unimplemented; project on indefinite hold). So it is valuable as
+the *register reference*, not as a ready firmware that drives HDCP. Its `cprman.cc` /
+`BCM2708ClockDomains` / `BCM2708PowerManagement` show how clock/power domains are driven from
+open code, which is the template if a power/enable gate turns out to need ungating.
+
+## Driver sequence — how to actually drive these registers
+
+No public copy of Broadcom's own `bhdm_hdcp.c` (the exact Magnum/Nexus sequence) is reachable —
+it lives in STB-vendor GPL tarballs, un-indexed. But the generic HDCP-1.x transmitter sequence
+is CONFIRMED from two readable GPL drivers — Synopsys `dw_hdmi` (register-level key-load/auth/
+encrypt) and Rockchip `rk616_hdcp` (the software workqueue state machine + repeater/retry) — plus
+the public HDCP 1.4 spec (Ri every 128 frames). Mapped onto the BCM2835 registers:
+
+1. **Load keys** (block 1): for n=0..39 → `HDCP_KEY_ADR=n; HDCP_KEY_KY0=lo32; HDCP_KEY_KY1=hi24;
+   HDCP_KEY_CTL.START=1; poll DONE`. Then `CP_CONFIG.I_ENABLE_KU_COMPUTATION=1`.
+2. **Start auth** (block 2): pulse `HDCP_CTL.I_RESET_KU`; HW generates An → poll
+   `CP_STATUS.O_AN_READY`; read `AN0/AN1`. Over DDC (I2C 0x74) write Aksv+An to the sink, read
+   BKSV(0x00)+BCAPS(0x40); verify BKSV = 20/40 ones (also in `BKSV0/1`). Set
+   `HDCP_CTL.I_AUTH_REQUEST` → HW computes Km/Ks/R0 → poll `CP_STATUS.HDCP_READY`; after ≥100 ms
+   read sink R0′ (DDC 0x08), compare to HW R0.
+3. **Enable encryption** on R0==R0′ (encryption-enable bit in HDCP_CTL/CP_CONFIG).
+4. **Ri watchdog**: every 128 frames read sink Ri′ (DDC 0x08) within the 128-pixel-clock window,
+   compare to HW Ri (`CP_INTEGRITY`); persistent mismatch → drop encryption + re-auth.
+5. **Repeater path** (if BCAPS.REPEATER): read downstream KSV list (DDC 0x43) into
+   `KSV_FIFO_0/1`, `HDCP_CTL.I_FORCE_VCALC`, read `V`, compare to sink V′ (DDC 0x20–0x2c).
+(The per-key-indexed load via the 0x7E809000 block is the one genuinely BCM-specific step;
+everything else mirrors the confirmed GPL drivers.)
+
+## FEASIBILITY VERDICT
+
+**Producing HDCP-encrypted output from the BCM2835 is NOT fundamentally impossible — it is an
+unsupported, undocumented-at-the-sequence-level, but register-reachable capability.** The
+reflexive "the Pi can't do HDCP" is true only of the *shipping configuration* (no OTP key, vc4
+omits HDCP, firmware disables it), not of the silicon.
+
+**What is CONFIRMED (multi-source):**
+- The BCM2835 contains a complete HDCP 1.x cipher/auth engine **and** a plaintext key-RAM loader,
+  both at known MMIO addresses, documented identically by three independent sources (Broadcom RDB
+  headers, GPL STB header, RE map).
+- The registers are ARM-addressable; the HSM clock is live; the OTP HDCP slot is empty (measured).
+- The generic transmitter driver sequence is known from GPL drivers + the public spec.
+- Valid device keys that a real sink will authenticate can be generated because the HDCP master
+  key is public (documented as fact; values/keygen not reproduced here).
+
+**What is UNKNOWN / the real remaining risks:**
+1. **Power/enable gating.** The HSM clock runs, but a power domain or a security/enable signal for
+   the HDCP block may be VPU/OTP-controlled. If so, writes to 0x7E809000 / CP registers may be
+   inert until ungated (possibly needing a `start.elf` change). *Untested.*
+2. **Exact bit-level auth sequence** and the `AN_INFLUENCE`/`CP_INTEGRITY_CFG`/`CP_TST` semantics
+   are not public; some iteration/tracing would be required.
+3. **Key material** must be supplied (legal/licensing considerations per the key-material section).
+4. vc4 vs firmware ownership: under `vc4-kms-v3d` the ARM owns HDMI (good for a driver/`/dev/mem`
+   approach); the firmware `tvservice` path would instead need legacy/fkms graphics.
+
+**Most tractable experiment (no firmware change, no vc4 patch to start):** a userspace `/dev/mem`
+prototype that (a) `mmap`s `0x7E809000` and `0x7E902000`, (b) reads `HDCP_KEY_CTL`/`CP_STATUS`/
+`CP_CONFIG` to check the block responds (non-garbage reads, DONE handshake behaves), (c) attempts
+a key load + `I_AUTH_REQUEST` against the connected sink and watches `CP_STATUS.HDCP_READY` and
+the sink's R0′. Step (b) alone answers the decisive gating question cheaply. If the block responds,
+promote to a `vc4` HDCP implementation (attach the DRM Content Protection property + the auth/Ri
+worker, per the driver-layer section). If the block is inert, escalate to clock/power ungating
+(using rpi-open-firmware's cprman/powman as the map) or a `start.elf` patch.
+
+**Effort estimate:** `/dev/mem` probe to answer gating: hours. Working key-load+auth against a
+real sink (if ungated): days–weeks (mostly sequence/bit-field iteration + key-set generation).
+Productionized vc4 Content-Protection driver: weeks. The single highest-value next step is the
+cheap `/dev/mem` gating probe.
