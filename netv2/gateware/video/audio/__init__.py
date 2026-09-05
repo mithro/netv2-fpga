@@ -9,7 +9,16 @@ Built on the phase-7a HDMI input pipeline's TERC4 data-island decoder
   Sample / ACR / InfoFrame packets into a CPU-readable PCM FIFO + CSRs.
 """
 
-from netv2.gateware.video.audio.parser import AudioPacketParser
+from netv2.gateware.video.audio.embed import (
+    AudioEmbedder,
+    AudioIslandEncoder,
+)
 from netv2.gateware.video.audio.extract import HDMIAudioExtract
+from netv2.gateware.video.audio.parser import AudioPacketParser
 
-__all__ = ["AudioPacketParser", "HDMIAudioExtract"]
+__all__ = [
+    "AudioEmbedder",
+    "AudioIslandEncoder",
+    "AudioPacketParser",
+    "HDMIAudioExtract",
+]
