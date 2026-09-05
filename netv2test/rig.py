@@ -87,6 +87,24 @@ class Rig(object):
             return False
         return st["mhz"] > 1.0
 
+    def ensure_locked(self, pattern="geometry", w=1920, h=1080, mhz=None, attempts=4, **pkw):
+        """Bring input0 to a resolution-detected lock, recovering from a
+        confused source (re-applies the CEA mode + redraws the pattern) which
+        can happen after an HPD disruption.  Raises LockTimeout if it cannot."""
+        last = None
+        for k in range(attempts):
+            try:
+                self.agent.mode(w, h)
+            except Exception:  # noqa: BLE001
+                pass
+            self.src_w, self.src_h = w, h
+            self.source_pattern(pattern, **pkw)
+            try:
+                return self.wait_for_lock(timeout=20, w=w, h=h, mhz=mhz, stable=1.0)
+            except LockTimeout as e:
+                last = e
+        raise last if last else LockTimeout("ensure_locked failed")
+
     def wait_for_lock(self, timeout=45.0, w=None, h=None, mhz=None, stable=1.0):
         """Wait until the NeTV2 `status` reports the expected input0 resolution
         and pixel clock, held stable for `stable` seconds.  This is the

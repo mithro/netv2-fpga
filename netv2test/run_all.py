@@ -56,7 +56,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--only", default="")
-    ap.add_argument("--no-reset", action="store_true", help="skip USB reset of the capture card")
+    ap.add_argument("--reset", action="store_true", help="USB re-enumerate the capture card first (only if wedged; disrupts HPD)")
     ap.add_argument("--capture", default="yuyv480", choices=["mjpg", "yuyv480", "yuyv1080"])
     args = ap.parse_args()
 
@@ -74,7 +74,7 @@ def main():
     evdir = os.path.join(repdir, "evidence")
 
     print("== NeTV2 HDMI test suite ==  reports -> %s" % repdir)
-    if not args.no_reset:
+    if args.reset:
         print("resetting MS2109 capture card ...")
         dev = reset_capture_card()
         print("  re-enumerated at %s" % dev)
@@ -82,9 +82,8 @@ def main():
     rig = Rig(evdir)
     # Bring the chain up on a known pattern + capture format.
     fmt = {"mjpg": ("capture_mjpg",), "yuyv480": ("capture_fast",), "yuyv1080": ("capture_hires",)}[args.capture]
-    getattr(rig, fmt[0])()          # start capture (asserts HPD, re-applies source mode)
-    rig.source_pattern("geometry")
-    rig.wait_for_lock(timeout=60)
+    getattr(rig, fmt[0])()          # start capture (asserts HPD)
+    rig.ensure_locked("geometry")   # lock with recovery
     duty = rig.measure_duty(6.0)
     print("capture health: duty %.0f%% @ %.0f fps (%d/%d good)" % (
         duty["duty"] * 100, duty["fps"], duty["good"], duty["n"]))
