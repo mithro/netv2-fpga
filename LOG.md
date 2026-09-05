@@ -418,3 +418,36 @@ gateware), T90 SKIP (documented gaps). Fixes made this pass:
   (overlay - passthrough, which cancels the capture-card latency) is reported
   only when enough source-passthrough frames are caught, which the flaky MS2109
   does intermittently. It no longer BLOCKs on the differential alone.
+
+### 23:30 — Adversarial coverage review and closing the gaps
+
+Dispatched an adversarial sub-agent to find NeTV2 functionality with no
+automated test. It correctly identified that the running gateware is the fixed
+magic-mirror pipeline (output0/output1/encoder/dma_writer/dma_reader/sdram_test
+are compiled out and absent from the live `help`), and flagged genuinely
+testable gaps. Added tests for the testable ones:
+
+- **T24 pipe_override** (`debug override`): raw-TMDS passthrough — an opaque
+  overlay block disappears and the raw source shows; verified. (The design doc's
+  old claim that this was "not exposed by firmware" was wrong; `debug override`
+  toggles `rectangle.pipe_override`.)
+- **T25 overlay-input (input1) signal quality**: JSON `overlay_symbol_sync==111`
+  and `overlay_symbol_errors==0` — the input1 analog of T05.
+- **T26 overlay DMA stop/run**: resume propagation after `debug stop`/`run`.
+- **T27 rectoff/rect**: the overlay read core disables and re-enables, leaving
+  the overlay fully controllable.
+- **T28 hpdforce/hpdrelax**: NeTV2-initiated HPD to the source drops and
+  restores input0 lock.
+- **T29 i2c snoop** (`debug dumpe`): mechanism verified; the snoop watches the
+  HDCP DDC port (0x74) with no HDCP source, so the buffer is legitimately
+  empty — reported SKIP with evidence.
+- **T30 firmware `video_mode`**: `video_mode <n>` (processor_start) reconfigures
+  the pipe and the board re-locks.
+- **T31 DDR bandwidth**: overlay framebuffer DMA drives non-zero DDR read/write.
+
+Also fixed real test-quality bugs the review surfaced along the way (overlay
+blocks overlapping geometry's white centre; rectoff/stop freeze semantics vs my
+initial "= passthrough" assumption; the limited-range keying wire level).
+Remaining SKIPs are legitimate: HDCP (no source), output1/encoder/dma/sdram
+(compiled out), HDMI audio (no gateware path), ethernet (uncabled),
+video_matrix connect / pattern source (inert in this gateware — only listed).
