@@ -14,6 +14,7 @@ dependencies = [
     "litepcie",
     "litespi",
     "litescope",
+    "liteiclink",
     "pythondata-cpu-vexriscv",
     "pythondata-software-compiler-rt",
     "pythondata-software-picolibc",
@@ -34,6 +35,7 @@ liteeth = { git = "https://github.com/enjoy-digital/liteeth.git", tag = "2026.04
 litepcie = { git = "https://github.com/enjoy-digital/litepcie.git", tag = "2026.04" }
 litespi = { git = "https://github.com/litex-hub/litespi.git", tag = "2026.04" }
 litescope = { git = "https://github.com/enjoy-digital/litescope.git", tag = "2026.04" }
+liteiclink = { git = "https://github.com/enjoy-digital/liteiclink.git", tag = "2026.04" }
 pythondata-cpu-vexriscv = { git = "https://github.com/litex-hub/pythondata-cpu-vexriscv.git", tag = "2026.04" }
 pythondata-software-compiler-rt = { git = "https://github.com/litex-hub/pythondata-software-compiler_rt.git", tag = "2026.04" }
 pythondata-software-picolibc = { git = "https://github.com/litex-hub/pythondata-software-picolibc.git", tag = "2026.04" }

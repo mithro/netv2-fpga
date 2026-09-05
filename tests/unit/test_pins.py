@@ -14,7 +14,8 @@ def test_litex_is_2026_04():
 
 
 def test_family_versions_match():
-    for pkg in ["litedram", "liteeth", "litepcie", "litespi", "litescope", "litex-boards"]:
+    for pkg in ["litedram", "liteeth", "litepcie", "litespi", "litescope", "liteiclink",
+                "litex-boards"]:
         assert md.version(pkg) == PINNED_VERSION, pkg
 
 
