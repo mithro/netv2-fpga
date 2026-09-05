@@ -250,12 +250,14 @@ class Display:
 
     # -- info -------------------------------------------------------------
     def edid(self):
-        path = "/sys/class/drm/card%d-%s/edid" % (self.card.minor, self.conn.fullname)
-        try:
-            with open(path, "rb") as f:
-                return f.read()
-        except OSError:
-            return b""
+        import glob
+        for path in glob.glob("/sys/class/drm/card*-%s/edid" % self.conn.fullname):
+            try:
+                with open(path, "rb") as f:
+                    return f.read()
+            except OSError:
+                pass
+        return b""
 
     def info(self):
         self.conn.refresh()
