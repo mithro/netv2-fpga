@@ -153,10 +153,12 @@ itself; `daddr` is fully shifted by then (last shift on the 8th rising edge, `:2
 **2.4 Read data driving.** The snooper's rising-edge read shift (`:334-344`) is replaced. On entering
 `I2C_RD_DATA` (from `I2C_ACK_DADDR` on a 0x75 match, or from `I2C_ACK_RD`), load
 `rd_shift <= regfile[reg_ptr]` and present `rd_shift[7]`; `sda_drive_low = (state == I2C_RD_DATA) &&
-!rd_shift[7]`, so SDA is only ever pulled low and a `1` is left to the bus pull-up; shift left on each
-**SCL falling** edge so data changes while SCL is low. After 8 bits enter `I2C_ACK_RD`, release SDA and
-sample it on the SCL rising edge (`:184`): low = ACK -> auto-increment and continue; high = NACK -> back
-to `I2C_START`.
+!rd_shift[7]`, so SDA is only ever pulled low and a `1` is left to the bus pull-up. The shift is
+**qualified on the SCL falling-edge state** (`SCL_cstate == SCL_FALL`), *not* on every `eth` cycle — the
+mirror image of the snooper's `SCL_cstate == SCL_RISE` guard on its own read shift
+(`legacy/overlay/i2c_snoop.v:333-345`) — so data changes exactly once per bit, while SCL is low. After 8
+bits enter `I2C_ACK_RD`, release SDA and sample it on the SCL rising edge (`:184`): low = ACK ->
+auto-increment and continue; high = NACK -> back to `I2C_START`.
 
 **2.5 Clock stretching: not used and not possible.** SCL (T18) is an FPGA *input* only and there is no
 `DDC_SCL_PD` net on the board (page 5). Every response is combinational out of registers, and the one
@@ -216,8 +218,10 @@ always-zero read because `STATUS.md:26-29` lists it and a transmitter may auto-i
 ## 4. Km computation
 
 **4.1 Key storage.** 40 x 56-bit sink keys, declared 64 deep for a clean 6-bit index:
-`(* RAM_STYLE = "distributed" *) reg [55:0] sink_keys [0:63];`. Distributed (LUTRAM) rather than BRAM:
-2240 bits is far below one RAMB18, and BRAM is the scarcer resource next to the video FIFOs on the 35T.
+`(* RAM_STYLE = "distributed" *) reg [55:0] sink_keys [0:63];`. Distributed (LUTRAM), **not BRAM** — this
+is a hard requirement, not a preference: the 2019 overlay baseline already uses 47.5 of 50 BRAM36
+(95%, §11.3), leaving only 2.5 blocks free, so a BRAM key store risks pushing the design over. 2240 bits
+of LUTRAM is cheap by comparison.
 
 **4.2 CSR interface** (`HDCPReceiver`, `sys` domain). Note `csr_data_width = 8`
 (`legacy/deps/litex/litex/soc/integration/soc_core.py:128`), so a 56-bit CSRStorage occupies 7 byte-wide
@@ -294,6 +298,12 @@ Mi[15:0] — warm-up clocks 55 and 56 — giving `Ri_r[15:8] = ri[15:8]` and `Ri
 Table 4-11. New `hdcp_cipher_rx` outputs: `Ri[15:0] = Ri_r`, `ri_valid` (one cycle on the
 `GET_M -> STREAM` transition), and `ri_is_r0 = auth_mode` sampled at that instant. `Ri_r` is stable from
 the first `STREAM` cycle, one cycle before `stream_ready` asserts (`:372`).
+
+The correctness of this two-clock capture window (that 55/56 and not 53/54 are the clocks that carry
+`ri`) is **not** proven by inspection — it is proven by tb #2 (§10.2): a `R0' == model R0` match confirms
+the window; a mismatch means the window is wrong (off by a clock, or the wrong `ostream` slice), **not**
+that the reference model is wrong. The model is the oracle, so triage a failure by shifting the capture
+window, never by editing the model.
 
 ### 5.2 R0 versus Ri — the trap
 
@@ -380,6 +390,7 @@ then becomes irrelevant; `hdcp status` prints both so the state is never ambiguo
 | 3 | `sys` -> `eth`/`pix_o` | `bksv`, `rx_enable`, `km_source`, `frame_offset` | `MultiReg` per bit; quasi-static, written only while disarmed |
 | 4 | `eth` -> `pix_o` | `km_hw[55:0]`, `an[63:0]` | held stable >= 8 `eth` cycles before the strobe, captured in `pix_o` on the synchronised `auth_start`; buses false-pathed |
 | 5 | `eth` -> `pix_o` | `auth_start` | `PulseSynchronizer` |
+| 5b | `eth` -> `pix_o` | `km_valid_hw` | single-bit level, its own `MultiReg` (it gates the `pix_o` cipher's `Km_valid`, §6) |
 | 6 | `pix_o` -> `eth` | `R0`, `Ri_ddc`, `frame_i`, `auth_state` | `BusSynchronizer` per bus — never bit-wise `MultiReg`, or a read could tear |
 | 7 | `pix_o` -> `sys` | same, for CSRStatus | `MultiReg` off the already-stable `eth` copies |
 | 8 | `eth` -> `sys` | `km_hw`, `an_rx`, `aksv_rx`, counters | `BusSynchronizer` for wide buses, `MultiReg` for single bits |
@@ -469,9 +480,11 @@ parent ever changes the build fails loudly rather than silently mis-driving a FE
 container as in `docs/superpowers/plans/2026-09-05-phase0-1-repo-setup-and-baseline.md:1076-1085` with
 `PYTHONHASHSEED=1` (`legacy/netv2mvp.py:1274-1276`): Verilog-only 35T via
 `rebuild2019_hdcprx_verilog.py 35 --lx-ignore-deps` (a copy of `legacy/rebuild2019_verilog.py` pointing
-at the new SoC); bitstreams via `netv2mvp_hdcprx.py -p 35 -c pcb` and `-p 100 -c pcb`. The 35T is the fit
-risk (§11.3), so the 100T is built first. The CSR bank budget must be checked: `csr_address_width = 14`
-gives 32 banks and `hdcp_rx` adds one; the build fails explicitly at `soc_core.py:316-317` on overflow.
+at the new SoC); bitstreams via `netv2mvp_hdcprx.py -p 100 -c pcb` and `-p 35 -c pcb`. **The 100T is the
+only hardware target** until the 35T baseline closes timing (§11.3): the 35T build is run as a
+synthesis/fit check and to track WNS, but its bitstream is never loaded (§10.3). The CSR bank budget
+must be checked: `csr_address_width = 14` gives 32 banks and `hdcp_rx` adds one; the build fails
+explicitly at `soc_core.py:316-317` on overflow.
 
 Later the same `netv2/gateware/hdcp/` package is instantiated from the modern LiteX tree; the Verilog and
 `HDCPReceiver` use only plain `Instance`, `CSRStorage`, `MultiReg`, `PulseSynchronizer` and
@@ -495,22 +508,51 @@ design, `LOG.md`), sources from `netv2/gateware/hdcp/` plus the untouched `legac
    Bksv read from 0x00; 2-byte Ri' read from 0x08; An (0x18) and Aksv (0x10) writes; Bcaps/Bstatus at
    0x40/0x41; foreign addresses 0x50 and 0xA0, which must be **NACKed and never driven**; a write to a
    read-only offset; auto-increment across 0x40->0x44. Asserts `sda_drive_low` timing against SCL edges.
+   The Bcaps/Bstatus "expected" bytes are those the Pi's HDCP driver actually parses, byte-order
+   included, **not** merely self-consistent with §3: Bcaps read at 0x40 = `0x80`; Bstatus is 2 bytes
+   little-endian, so the byte read at 0x41 = `0x00` and at 0x42 = `0x10` (HDMI_MODE, bit 12), which the
+   Pi reassembles as the 16-bit `0x1000`.
 2. `tb_hdcp_rx_auth.v` — the full handshake with the shared keys. Stimulus (An, Aksv, the 40 sink keys,
    expected R0/Ri) is generated by a Python script from `netv2/hdcp/cipher.py` into a `$readmemh` file,
    so the model is the oracle. Drives a synthetic `pix_o` with vsync and an EESS `ctl_code == 4'b1001`
    per vertical blank, runs 300 frames, and asserts: R0' readable over I2C within 100 ms of the Aksv
-   write (~2.6 us in practice, §5.5); Ri' unchanged until frame 128; Ri' == model Ri at frames 128, 256.
+   write (~2.6 us in practice, §5.5); **R0' == model R0** (the gate that proves the §5.1 capture window
+   — see §5.1); Ri' unchanged until frame 128; Ri' == model Ri at frames 128, 256.
 3. `tb_hdcp_decrypt.v` — the model encrypts a small frame with (Km, An); the testbench feeds the
    ciphertext through `hdcp_mod_rx`'s keystream and checks the XOR reproduces the plaintext byte for
    byte across a rekey (line end) and a vertical blank.
 4. A regression that `i2c_snoop.v` still produces the same `An` and `Aksv14_write` as `hdcp_rx.v` for
    identical stimulus (§1.4).
 
+The following six cases are **required before any hardware run**, not optional:
+
+5. **Aksv rewritten mid-`KM_RUN`.** A second last-Aksv-byte write while the accumulator is running must
+   abandon and restart it (§2.8, HDCP 1.4 transition B1:B1); assert `km_valid_hw` never asserts for the
+   abandoned run and the final `km_hw` matches the model for the *restarted* Aksv.
+6. **Half-loaded key set.** With `keys_loaded < 40`, a full handshake must produce **no R0'** — `Ri'`
+   reads its reset value and `sda_drive_low` never asserts for a 0x74 address match, because
+   `rx_enable_eff = rx_enable & (keys_loaded == 40)` is 0 (§2.8). This guards against a wrong R0' from a
+   partial load.
+7. **Ri' read straddling an update.** Start a 2-byte read of 0x08 and drive a (i mod 128 == 0) frame
+   boundary *during* the transaction; assert the two bytes returned are one consistent Ri value, proving
+   the §5.4 "refresh `ri_ddc_eth` only at `I2C_START`" latch prevents a torn read.
+8. **Lowest supported pixel clock.** Repeat tb #2 with `pix_o` at 25.2 MHz (480p, the rig's slowest
+   mode, §5.5); R0' must still be valid well within 100 ms.
+9. **`pix_o` not locked when Aksv arrives.** Write An+Aksv with the synthetic `pix_o` held in reset
+   (MMCM unlocked, §5.5); assert no spurious R0' is produced and that R0' becomes valid only after
+   `pix_o` starts and a fresh Aksv (or HPD-forced re-auth) drives the cipher.
+
 **10.3 Hardware, in order.** **No bitstream is loaded on `rpi3-netv2` without Tim's explicit go-ahead,
 and only volatile JTAG loads are ever used there** (`tests/hardware/hosts.py` `ALLOWED_ON_GOLDEN` =
 `jtag_volatile_load`, `restore_stock_bitstream`; spec decision 6). NOR flash is never written; every run
 ends by reloading the stock `user-35.bit`. The recovery path (`~/alphamax-rpi.cfg` on `rpi3-netv2`) is
 confirmed present and the stock bitstream checksummed *before* any load.
+
+**A bitstream that does not close timing is never loaded, not even volatile.** Per §11.3 the 35T
+baseline currently routes with WNS -7.5 ns; a build with negative WNS can mis-sample the DDR or video
+clocks and hang or corrupt the running system, so H1-H6 below are gated on a build with **post-route
+WNS >= 0 and no failing endpoints**. Until the 35T baseline itself closes (§11.3), all hardware steps run
+on a **100T** bitstream; the 35T is deferred, not merely deprioritised.
 
 | Step | Check | Evidence |
 |---|---|---|
@@ -546,24 +588,48 @@ still authenticates — **R0' does not depend on EESS; the 128-frame link check 
 matters for triage. *R0' read timing*: the spec forbids reading before 100 ms; an early read gets our
 value anyway. *`pix_o` not locked at Aksv time*: §5.5.
 
-**11.3 Resources.** Estimates **(inferred** — no post-route numbers exist;
-`docs/original/gateware.md:732` records the baseline utilisation as an open gap, so the first build must
-report both**)**:
+**11.3 Resources — the 35T is over budget before we add anything.** Real post-route numbers now exist
+and are worse than any earlier estimate assumed. The **2019 overlay design, unmodified**, placed and
+routed on the golden-unit part **xc7a35t-fgg484-2** with Vivado 2025.2 gives:
 
-| Block | LUT | FF |
+| Metric | 2019 baseline on 35T | Headroom |
 |---|---|---|
-| SCL/SDA deglitch + sync (copy of `i2c_snoop.v:443-624`) + protocol FSM + `reg_ptr` | 220 | 150 |
-| register file read mux (0x00..0x44) + write decode | 150 | 140 |
-| 40x56 key RAM, distributed (64x56), + Km accumulator (56-bit add, reg, index) | 126 | 65 |
-| CDC (2 x 16 b, 1 x 56 b, 1 x 64 b BusSynchronizer, pulse syncs) | 40 | 330 |
-| `hdcp_cipher_rx` Ri register + `hdcp_mod_rx` R0/Ri/frame logic | 40 | 60 |
-| CSR bank | 60 | 260 |
-| **total** | **~640** | **~1000** |
+| Post-route **WNS** | **-7.5 ns**, 515 failing endpoints (hold clean) | **negative — does not close** |
+| **BRAM36** | **47.5 / 50 = 95%** | 2.5 blocks |
+| LUT | 73.6% | ~26% |
 
-Against the XC7A35T's 20 800 LUTs / 41 600 FFs that is ~3 % / ~2.5 %, with no BRAM and no DSP. The
-unknown is the overlay design's *existing* headroom — hence the 100T fallback and the "build 100T first"
-rule (§9). If the 35T does not fit, the cheapest cuts are (a) move the key RAM to one RAMB18, (b) drop
-`i2c_txn_count` and the debug CSRs, (c) drop the `an_rx`/`aksv_rx` readback.
+**(a) Precondition.** The 35T baseline **does not currently close timing on its own**, so no 35T
+receiver build can be validated on hardware until that pre-existing failure is fixed. This is a blocker
+inherited from the baseline, independent of anything in this design.
+
+**(b) Split by domain and gate the pix_o additions.** The receiver's own logic is estimated (still
+**inferred**, but now against a nearly-full part):
+
+| Block | domain | LUT | FF | on 35T? |
+|---|---|---|---|---|
+| I2C slave: SCL/SDA sync+deglitch + protocol FSM + `reg_ptr` | eth | 220 | 150 | eligible |
+| register file read mux (0x00..0x44) + write decode | eth | 150 | 140 | eligible |
+| 40x56 key RAM (distributed/LUTRAM, 64x56) + Km accumulator | eth | 126 | 65 | eligible |
+| CSR bank + CDC (Bus/PulseSynchronizers) | sys/eth | 100 | 590 | eligible |
+| **`hdcp_cipher_rx` Ri shift register** (the §5.1 patch) | **pix_o** | 20 | 20 | **gated** |
+| **`hdcp_mod_rx` R0/Ri_ddc/frame comparator + adder** (the §5.2 patch) | **pix_o** | 60 | 90 | **gated** |
+
+The eth/sys-domain blocks (~600 LUT / ~950 FF, no BRAM, no DSP) are 35T-eligible on LUT/FF budget and
+add no BRAM — which is precisely why the key store is LUTRAM, not a RAMB18 (§4.1): with only 2.5 BRAM36
+free, a BRAM key store could tip the design over. But the two **new pix_o-domain additions add logic to
+the exact clock domain that already misses timing by 7.5 ns**. They are therefore **gated on a fresh
+post-route WNS** for the combined design and are **100T-first**: they go into a 100T build, and reach
+the 35T only after the baseline closes and a receiver build re-routes with WNS >= 0.
+
+**(c) 35T hardware is deferred** until the pre-existing baseline timing closes. All of §10.3's H1-H6 run
+on the 100T until then; §9's "build 100T first" becomes "build 100T *only* for hardware", with the 35T
+kept as a synthesis/fit check, never loaded.
+
+**(d)** Reinforced in §10.3: a -7.5 ns bitstream is never loaded, not even volatile.
+
+If a 35T fit is later pursued, the cheapest cuts are (i) drop `i2c_txn_count` and the debug CSRs,
+(ii) drop the `an_rx`/`aksv_rx` readback, (iii) narrow the register-file mux — but none of these help the
+WNS, which is the actual gate.
 
 **11.4 The decrypt path (DoD 3) is not free.** Per §0.1 no decrypt exists. Adding one means XORing
 `cipher_stream` into input0's RGB before the DMA. That path is in the `pix` domain but the cipher runs in
