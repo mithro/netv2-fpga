@@ -111,3 +111,63 @@ So the Pi Zero is currently outputting **nothing** on HDMI: with the KMS
 driver, no hotplug (HPD) => no mode set => no signal. Consistent with the
 NeTV2 reporting input0 = 0x0. Next: check whether the NeTV2 presents
 HPD/EDID on its HDMI input, and force a 1080p60 mode on the Pi Zero if needed.
+
+### 16:10 — HPD/EDID architecture: NeTV2 passes HPD through from the *sink*
+
+From `netv2mvp.py` + firmware:
+- `hdmi_in0` pads have `hpd_notif` only (U17, `HDMI_HPD_LL_N`); the FPGA does
+  **not** generate HPD for the source. `hdmi_rx0_forceunplug` (M22) is driven
+  by the `hdcp.hpd_ena` CSR to *de-assert* HPD to the source (used at boot and
+  on `link_redo`). The sink's HPD and DDC/EDID on the HDMI **output** are
+  passed through in hardware to the HDMI **input** (man-in-the-middle design).
+- Firmware `hdmi_in0_service()` keeps the input MMCM in reset until
+  `hdmi_in0_edid_hpd_notif_read()` says connected => `status` shows 0 MHz
+  even if TMDS is present.
+- `debug edid output0` => "no EDID capabilities": this gateware has no I2C
+  master on output0 (DDC is pure passthrough), so the FPGA cannot read the
+  sink EDID.
+- `hdp_toggle` command exists but prints "Toggling HDP on output0" (naming
+  confusion in firmware; it toggles `hdmi_in0_edid_hpd_en`, which has no pad).
+
+Forcing the connector on rpiz-3 via debugfs (`/sys/kernel/debug/dri/0/HDMI-A-1/force`)
+did not stick (`unspecified` after write) but `kmstest -c HDMI-A-1 -r 1920x1080@60 --cea -T smpte`
+does set a 148.5 MHz 1080p60 mode on the CRTC even with the connector
+"disconnected":
+
+```
+Crtc 3/@97: 1920x1080@60.00 148.500 1920/88/44/148/+ 1080/4/5/36/+ 60 (60.00)
+```
+
+NeTV2 still reported `input0: 0x0 (@ 0.0 MHz)` (MMCM held in reset, see above).
+
+### 16:20 — Capture card asserts HPD only while streaming => chain comes alive
+
+USB capture card on rpi3-netv2: `uvcvideo`, "UVC Camera (345f:2109)",
+MJPG + YUYV, 1920x1080 up to 60 fps (MS2109-class). kernel 4.14 uvcvideo.
+
+Streaming from it for 20 s
+(`v4l2-ctl -d /dev/video0 --set-fmt-video=width=1920,height=1080,pixelformat=MJPG --stream-mmap --stream-count=600 --stream-to=/dev/null`)
+gave ~58 fps, and **while streaming**:
+
+- rpiz-3: `/sys/class/drm/card0-HDMI-A-1/status` = **connected**
+- NeTV2 `status`:
+
+```
+input0:  0x0 (@ 148.49 MHz)
+input1:  1920x1080 (@ 148.49 MHz)
+xadc: 77516 mC
+ddr: read:  119Mbps  write: 3986Mbps  all: 4105Mbps
+```
+
+So: the capture card only drives HPD when a V4L2 stream is active; with HPD
+present the NeTV2 sees the 148.5 MHz TMDS clock from rpiz-3 (1080p60) on
+input0 and locks the overlay input (input1, rpi3-netv2's own HDMI) at
+1920x1080. input0 had not yet reported a resolution after ~6 s (phase/char
+alignment still in progress, or lost again when the stream stopped).
+
+Consequence for the test suite: keep a V4L2 stream open on the capture card
+for the whole test run (it is both the HPD source and the measurement sink).
+
+Tooling on rpi3-netv2 (python 3.5): numpy 1.12 present; **no** PIL, cv2,
+ffmpeg. MJPG decoding for tests will need a pure-python/numpy JPEG path or
+use the YUYV format instead (raw, no decode needed).
