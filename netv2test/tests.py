@@ -269,19 +269,23 @@ def t11_overlay_keying(rig, ctx):
     rig.source_pattern("greyfield", level=128)
     rig.wait_for_lock()
     ov = rig.overlay
+    # The overlay Pi HDMI is limited-range RGB, so an overlay value V reaches
+    # the NeTV2 as ~16 + V*219/255.  Only V==0 (wire ~16) sits below the default
+    # rect_thresh 20 and keys OUT; anything brighter keys IN.  So the black
+    # *background* (0) is the transparent region and a white block is opaque.
     ov.fill((0, 0, 0))
-    ov.block(200, 300, 400, 300, (255, 255, 255))   # bright -> opaque white
-    ov.block(900, 300, 400, 300, (8, 8, 8))          # dark -> transparent -> grey source
+    ov.block(200, 300, 400, 300, (255, 255, 255))   # opaque white block
     img, f = rig.good_frame_where(_greyfield_sentinel(128), timeout=30, settle=0.5)
     ctx.evidence_ppm(img, "T11_keying.ppm")
     sx, sy = img.w / float(P.W), img.h / float(P.H)
     bright = img.box_luma((int(300 * sx), int(400 * sy), int(500 * sx), int(500 * sy)))
+    # transparent region: overlay black at (900..1300, 300..600) -> shows grey source
     trans = img.box_luma((int(1000 * sx), int(400 * sy), int(1200 * sx), int(500 * sy)))
     ctx.metric("bright_block_luma", round(bright, 1))
-    ctx.metric("transparent_block_luma", round(trans, 1))
-    ctx.check(bright > 200, "bright overlay block is opaque white (luma %.0f)" % bright)
-    ctx.check(80 < trans < 180, "dark overlay block is transparent (shows grey source, luma %.0f)" % trans)
-    ctx.check(bright - trans > 60, "opaque and transparent blocks clearly differ (%.0f vs %.0f)" % (bright, trans))
+    ctx.metric("transparent_bg_luma", round(trans, 1))
+    ctx.check(bright > 200, "opaque white overlay block shows white (luma %.0f)" % bright)
+    ctx.check(80 < trans < 180, "black overlay background keys out -> shows grey source (luma %.0f)" % trans)
+    ctx.check(bright - trans > 60, "opaque and keyed-out regions clearly differ (%.0f vs %.0f)" % (bright, trans))
 
 
 @test("T12", "overlay", needs_capture=True)
